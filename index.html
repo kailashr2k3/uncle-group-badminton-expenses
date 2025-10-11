@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Badminton Expenses</title>
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-6xl mx-auto p-4 sm:p-6">
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold">🏸 Badminton Expenses</h1>
+      <div>
+        <button id="adminToggle" class="text-sm px-3 py-2 rounded bg-gray-200 hover:bg-gray-300">Admin</button>
+      </div>
+    </header>
+
+    <section class="grid md:grid-cols-2 gap-6">
+      <!-- Balances -->
+      <div class="bg-white rounded-2xl shadow p-4">
+        <h2 class="text-lg font-semibold mb-3">Balances</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm" id="balancesTable">
+            <thead><tr class="bg-gray-100">
+              <th class="text-left px-3 py-2">Player</th>
+              <th class="text-right px-3 py-2">Owed</th>
+              <th class="text-right px-3 py-2">Paid</th>
+              <th class="text-right px-3 py-2">Balance</th>
+            </tr></thead>
+            <tbody id="balancesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Players -->
+      <div class="bg-white rounded-2xl shadow p-4">
+        <h2 class="text-lg font-semibold mb-3">Players</h2>
+        <ul id="playersList" class="space-y-1 text-sm"></ul>
+      </div>
+
+      <!-- Attendance -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <h2 class="text-lg font-semibold mb-3">Attendance</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm" id="attendanceTable">
+            <thead><tr class="bg-gray-100">
+              <th class="text-left px-3 py-2">Date</th>
+              <th class="text-left px-3 py-2">Player</th>
+              <th class="text-right px-3 py-2">Slots (+1/+2)</th>
+            </tr></thead>
+            <tbody id="attendanceBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Payments -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <h2 class="text-lg font-semibold mb-3">Payments</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm" id="paymentsTable">
+            <thead><tr class="bg-gray-100">
+              <th class="text-left px-3 py-2">Date</th>
+              <th class="text-left px-3 py-2">Player</th>
+              <th class="text-right px-3 py-2">Amount</th>
+              <th class="text-left px-3 py-2">Note</th>
+            </tr></thead>
+            <tbody id="paymentsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Admin Panel (hidden until toggled) -->
+    <section id="adminPanel" class="mt-8 hidden">
+      <div class="bg-white rounded-2xl shadow p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Admin</h2>
+          <div class="space-x-2">
+            <button id="signInBtn" class="px-3 py-2 rounded bg-blue-600 text-white text-sm">Sign in</button>
+            <button id="signOutBtn" class="px-3 py-2 rounded bg-gray-200 text-sm">Sign out</button>
+          </div>
+        </div>
+        <p id="authStatus" class="text-sm text-gray-600 mt-2">Not signed in</p>
+        <hr class="my-4"/>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <!-- Add Player -->
+          <form id="playerForm" class="space-y-2">
+            <h3 class="font-medium">Add Player</h3>
+            <input class="w-full border rounded px-3 py-2" placeholder="Name" name="name" required />
+            <input class="w-full border rounded px-3 py-2" placeholder="Email (optional)" name="email" />
+            <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Player</button>
+            <p class="text-xs text-gray-500">Active by default. Unique names.</p>
+          </form>
+
+          <!-- Add Expense -->
+          <form id="expenseForm" class="space-y-2">
+            <h3 class="font-medium">Add Expense (Court/Balls etc.)</h3>
+            <input type="date" class="w-full border rounded px-3 py-2" name="date" required />
+            <input type="number" step="0.01" class="w-full border rounded px-3 py-2" placeholder="Amount" name="amount" required />
+            <input class="w-full border rounded px-3 py-2" placeholder="Description" name="description" />
+            <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Expense</button>
+          </form>
+
+          <!-- Add Attendance -->
+          <form id="attendanceForm" class="space-y-2">
+            <h3 class="font-medium">Add Attendance</h3>
+            <input type="date" class="w-full border rounded px-3 py-2" name="date" required />
+            <select class="w-full border rounded px-3 py-2" name="player_id" id="attPlayer" required></select>
+            <input type="number" class="w-full border rounded px-3 py-2" placeholder="Slots (1 or 2)" name="slots" min="1" value="1" required />
+            <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add/Update Attendance</button>
+            <p class="text-xs text-gray-500">Unique per (date, player). Re-submit to update slots.</p>
+          </form>
+
+          <!-- Add Payment -->
+          <form id="paymentForm" class="space-y-2">
+            <h3 class="font-medium">Add Payment</h3>
+            <input type="date" class="w-full border rounded px-3 py-2" name="date" required />
+            <select class="w-full border rounded px-3 py-2" name="player_id" id="payPlayer" required></select>
+            <input type="number" step="0.01" class="w-full border rounded px-3 py-2" placeholder="Amount" name="amount" required />
+            <input class="w-full border rounded px-3 py-2" placeholder="Note" name="note" />
+            <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Payment</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <footer class="text-xs text-gray-500 mt-8">Built with Supabase + Tailwind. Static hosting friendly.</footer>
+  </div>
+
+  <script>
+    // === CONFIG: Replace with your Supabase project details ===
+    const SUPABASE_URL = "https://ioxtxbgqaognzxscgkly.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveHR4YmdxYW9nbnp4c2Nna2x5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTgxMDksImV4cCI6MjA3NTczNDEwOX0.oIST2TVUJbg4H0PziuNdLBcSHFERkkM2M29bHpsYE-E";
+
+    // Init Supabase
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // UI handles
+    const balancesBody = document.getElementById('balancesBody');
+    const playersList = document.getElementById('playersList');
+    const attendanceBody = document.getElementById('attendanceBody');
+    const paymentsBody = document.getElementById('paymentsBody');
+    const adminPanel = document.getElementById('adminPanel');
+    const adminToggle = document.getElementById('adminToggle');
+    const authStatus = document.getElementById('authStatus');
+    const signInBtn = document.getElementById('signInBtn');
+    const signOutBtn = document.getElementById('signOutBtn');
+
+    const attPlayer = document.getElementById('attPlayer');
+    const payPlayer = document.getElementById('payPlayer');
+
+    adminToggle.addEventListener('click', () => {
+      adminPanel.classList.toggle('hidden');
+    });
+
+    // Auth
+    signInBtn.addEventListener('click', async () => {
+      const email = prompt('Enter your admin email to receive a sign-in link:');
+      if (!email) return;
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) alert(error.message); else alert('Magic link sent! Check your inbox.');
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      updateAuthStatus();
+    });
+
+    async function updateAuthStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        authStatus.textContent = `Signed in as ${user.email}`;
+      } else {
+        authStatus.textContent = 'Not signed in';
+      }
+    }
+
+    // Fetch & Render
+    async function fetchPlayers() {
+      const { data, error } = await supabase.from('players').select('*').order('name');
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchAttendance() {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('id,date,slots,player_id,players(name)')
+        .order('date', { ascending: false });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchPayments() {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id,date,amount,note,player_id,players(name)')
+        .order('date', { ascending: false });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchBalances() {
+      const { data, error } = await supabase
+        .from('balance_view')
+        .select('*')
+        .order('name');
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    function renderPlayers(players) {
+      playersList.innerHTML = players.map(p => `<li>• ${p.name}${p.email ? ` <span class=\"text-gray-500\">(${p.email})</span>`: ''}</li>`).join('');
+      // Fill selects
+      const opts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      attPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+      payPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+    }
+
+    function renderAttendance(rows) {
+      attendanceBody.innerHTML = rows.map(r => `
+        <tr>
+          <td class="px-3 py-2">${r.date}</td>
+          <td class="px-3 py-2">${r.players?.name ?? ''}</td>
+          <td class="px-3 py-2 text-right">${r.slots}</td>
+        </tr>`).join('');
+    }
+
+    function renderPayments(rows) {
+      paymentsBody.innerHTML = rows.map(r => `
+        <tr>
+          <td class="px-3 py-2">${r.date}</td>
+          <td class="px-3 py-2">${r.players?.name ?? ''}</td>
+          <td class="px-3 py-2 text-right">$${Number(r.amount).toFixed(2)}</td>
+          <td class="px-3 py-2">${r.note ?? ''}</td>
+        </tr>`).join('');
+    }
+
+    function renderBalances(rows) {
+      balancesBody.innerHTML = rows.map(r => {
+        const bal = Number(r.balance);
+        const cls = bal > 0 ? 'text-red-600' : (bal < 0 ? 'text-emerald-700' : '');
+        return `
+        <tr>
+          <td class="px-3 py-2">${r.name}</td>
+          <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
+          <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
+          <td class="px-3 py-2 text-right font-semibold ${cls}">$${bal.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function refreshAll() {
+      updateAuthStatus();
+      const [players, attendance, payments, balances] = await Promise.all([
+        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances()
+      ]);
+      renderPlayers(players);
+      renderAttendance(attendance);
+      renderPayments(payments);
+      renderBalances(balances);
+    }
+
+    // Forms
+    document.getElementById('playerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const payload = { name: form.get('name').trim(), email: (form.get('email')||'').trim() || null };
+      const { error } = await supabase.from('players').insert(payload);
+      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+    });
+
+    document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const payload = {
+        date: form.get('date'),
+        amount: Number(form.get('amount')),
+        description: (form.get('description')||'').trim() || null
+      };
+      const { error } = await supabase.from('expenses').insert(payload);
+      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+    });
+
+    document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const payload = {
+        date: form.get('date'),
+        player_id: form.get('player_id'),
+        slots: Number(form.get('slots'))
+      };
+      // Upsert by (date, player_id) uniqueness
+      const { error } = await supabase.from('attendance')
+        .upsert(payload, { onConflict: 'date,player_id' });
+      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+    });
+
+    document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const payload = {
+        date: form.get('date'),
+        player_id: form.get('player_id'),
+        amount: Number(form.get('amount')),
+        note: (form.get('note')||'').trim() || null
+      };
+      const { error } = await supabase.from('payments').insert(payload);
+      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+    });
+
+    // Initial load + auth state listener
+    supabase.auth.onAuthStateChange((_ev, _session) => {
+      updateAuthStatus();
+    });
+
+    refreshAll();
+  </script>
+</body>
+</html>
