@@ -10,7 +10,7 @@
 <body class="bg-gray-50 text-gray-900">
   <div class="max-w-6xl mx-auto p-4 sm:p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold">🏸 Badminton Expenses</h1>
+      <h1 class="text-2xl font-bold">🏸 Unlce Group Badminton Expenses</h1>
       <div>
         <button id="adminToggle" class="text-sm px-3 py-2 rounded bg-gray-200 hover:bg-gray-300">Admin</button>
       </div>
@@ -33,11 +33,19 @@
         </div>
       </div>
 
-      <!-- Players -->
+<!--       Players
       <div class="bg-white rounded-2xl shadow p-4">
         <h2 class="text-lg font-semibold mb-3">Players</h2>
         <ul id="playersList" class="space-y-1 text-sm"></ul>
-      </div>
+      </div> -->
+
+      <!-- Total Attendance Chart -->
+    <div class="bg-white rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-3">Total Attendance per Session</h2>
+      <canvas id="attendanceChart" height="160"></canvas>
+      <p class="text-xs text-gray-500 mt-2">Counts use “slots” so +2 guests are included.</p>
+    </div>
+
 
       <!-- Attendance -->
       <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
@@ -129,7 +137,8 @@
     <footer class="text-xs text-gray-500 mt-8">Built with Supabase + Tailwind. Static hosting friendly.</footer>
   </div>
 
- <script type="module">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
     // === CONFIG: Replace with your Supabase project details ===
     const SUPABASE_URL = "https://ioxtxbgqaognzxscgkly.supabase.co";
@@ -150,45 +159,109 @@
     const authStatus = document.getElementById('authStatus');
     const signInBtn = document.getElementById('signInBtn');
     const signOutBtn = document.getElementById('signOutBtn');
-
     const attPlayer = document.getElementById('attPlayer');
     const payPlayer = document.getElementById('payPlayer');
 
-adminToggle.addEventListener('click', async () => {
-  adminPanel.classList.toggle('hidden');
-  if (!adminPanel.classList.contains('hidden')) {
-    // Panel just opened: ensure status + prompt to sign in if not logged in
-    updateAuthStatus();
-    const user = await getUser();
-    if (!user) { await signInFlow(); }
-  }
-});
+    adminToggle.addEventListener('click', async () => {
+      adminPanel.classList.toggle('hidden');
+      if (!adminPanel.classList.contains('hidden')) {
+        // Panel just opened: ensure status + prompt to sign in if not logged in
+        updateAuthStatus();
+        const user = await getUser();
+        if (!user) { await signInFlow(); }
+      }
+    });
 
-signInBtn.addEventListener('click', signInFlow);
+    signInBtn.addEventListener('click', signInFlow);
 
-signOutBtn.addEventListener('click', async () => {
-  await supabase.auth.signOut();
-  updateAuthStatus();
-});
+    signOutBtn.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      updateAuthStatus();
+    });
 
 
-async function getUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user || null;
-}
-
-async function signInFlow() {
-  const email = prompt("Enter your admin email to receive a sign-in link:");
-  if (!email) return;
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: SITE_URL  // comes back to your GitHub Page
+    async function getUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user || null;
     }
-  });
-  if (error) alert(error.message);
-  else alert("Magic link sent! Check your inbox.");
-}
+
+    async function signInFlow() {
+      const email = prompt("Enter your admin email to receive a sign-in link:");
+      if (!email) return;
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: SITE_URL  // comes back to your GitHub Page
+        }
+      });
+      if (error) alert(error.message);
+      else alert("Magic link sent! Check your inbox.");
+    }
+
+    let attendanceChart; // chart instance
+
+    function groupAttendanceByDate(rows) {
+      // rows have: { date, slots, players{name}, ... }
+      const map = new Map(); // date -> totalSlots
+      for (const r of rows) {
+        const key = r.date; // YYYY-MM-DD
+        map.set(key, (map.get(key) || 0) + Number(r.slots || 0));
+      }
+      // sort by date ascending
+      return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    function renderAttendanceChart(rows) {
+      const ctx = document.getElementById('attendanceChart');
+      if (!ctx) return;
+
+      const grouped = groupAttendanceByDate(rows);
+
+      // limit to last 12 sessions (optional). Remove slice if you want all.
+      const lastN = grouped.slice(-12);
+      const labels = lastN.map(([date]) => date);
+      const data = lastN.map(([, total]) => total);
+
+      // destroy old chart if any (for live refresh after inserts)
+      if (attendanceChart) {
+        attendanceChart.destroy();
+      }
+
+      attendanceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Total slots (attendance) per session',
+              data
+              // No need to set colors — Chart.js will pick defaults
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { autoSkip: true, maxRotation: 0 } },
+            y: { beginAtZero: true, title: { display: true, text: 'Slots' } }
+          },
+          plugins: {
+            legend: { display: true },
+            tooltip: { mode: 'index', intersect: false }
+          }
+        }
+      });
+    }
+    
+    function groupAttendanceByPlayer(rows) {
+      const map = new Map(); // playerName -> totalSlots
+      for (const r of rows) {
+        const name = r.players?.name ?? 'Unknown';
+        map.set(name, (map.get(name) || 0) + Number(r.slots || 0));
+      }
+      return [...map.entries()].sort((a, b) => b[1] - a[1]); // by total desc
+    }
 
 
     async function updateAuthStatus() {
@@ -280,10 +353,12 @@ async function signInFlow() {
       const [players, attendance, payments, balances] = await Promise.all([
         fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances()
       ]);
-      renderPlayers(players);
+
+      // renderPlayers(players); // remove this line
       renderAttendance(attendance);
       renderPayments(payments);
       renderBalances(balances);
+      renderAttendanceChart(attendance); // 👈 add this
     }
 
     // Forms
@@ -339,16 +414,16 @@ async function signInFlow() {
       updateAuthStatus();
     });
 
-// Keep this listener (it already exists in your file)
-supabase.auth.onAuthStateChange((_ev, _session) => {
-  updateAuthStatus();
-});
+    // Keep this listener (it already exists in your file)
+    supabase.auth.onAuthStateChange((_ev, _session) => {
+      updateAuthStatus();
+    });
 
-// Make sure any magic-link code in the URL is exchanged for a session
-(async () => {
-  await supabase.auth.getSession();  // processes ?code=... if present
-  await refreshAll();
-})();
+    // Make sure any magic-link code in the URL is exchanged for a session
+    (async () => {
+      await supabase.auth.getSession();  // processes ?code=... if present
+      await refreshAll();
+    })();
 
 
     refreshAll();
