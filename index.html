@@ -149,6 +149,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
     // === CONFIG: Replace with your Supabase project details ===
@@ -271,7 +273,12 @@
         type: 'bar',
         data: {
           labels,
-          datasets: [{ label: 'Total attendance (slots)', data: values }]
+          datasets: [
+            {
+              label: 'Total attendance (slots)',
+              data: values
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -291,10 +298,22 @@
           },
           plugins: {
             legend: { display: false },
-            tooltip: { mode: 'nearest', intersect: false }
+            tooltip: { mode: 'nearest', intersect: false },
+            datalabels: {
+              anchor: 'end',       // label position
+              align: 'right',      // label alignment
+              color: '#111',       // text color
+              font: { weight: 'bold' },
+              formatter: (value, context) => {
+                const name = context.chart.data.labels[context.dataIndex];
+                return `${name}: ${value}`;
+              },
+              clip: false
+            }
           },
           layout: { padding: { right: 8 } }
-        }
+        },
+        plugins: [ChartDataLabels] // 👈 register the plugin here
       });
     }
 
