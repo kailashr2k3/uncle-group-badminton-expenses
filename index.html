@@ -33,7 +33,6 @@
         </div>
       </div>
 
-    <!-- Per-Player Total Attendance -->
     <div class="bg-white rounded-2xl shadow p-4">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
@@ -44,10 +43,11 @@
           <option value="50">Top 50</option>
         </select>
       </div>
-      <canvas id="playerAttendanceChart" height="360"></canvas>
-      <p class="text-xs text-gray-500 mt-2">
-        Totals include <em>slots</em> (so +2 guests count as 2).
-      </p>
+      <!-- cap height here; the chart can scroll inside if there are many bars -->
+      <div style="max-height: 620px; overflow:auto;">
+        <canvas id="playerAttendanceChart"></canvas>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">Totals include slots (+2 guests count as 2).</p>
     </div>
 
       <!-- Attendance -->
@@ -240,33 +240,36 @@
       const labels = data.map(([name]) => name);
       const values = data.map(([, total]) => total);
 
-      if (playerAttendanceChart) playerAttendanceChart.destroy();
+      // 💡 Auto-height: ~28px per bar (label), with sensible min/max
+      const perBar = 28;                 // tweak to taste (24–32)
+      const minH = 240;                  // small lists still readable
+      const maxH = 700;                  // cap to avoid giant canvases
+      const desired = Math.max(minH, Math.min(maxH, labels.length * perBar));
+      canvas.height = desired;
 
-      playerAttendanceChart = new Chart(canvas, {
+      if (window.playerAttendanceChart) window.playerAttendanceChart.destroy();
+
+      window.playerAttendanceChart = new Chart(canvas, {
         type: 'bar',
         data: {
           labels,
-          datasets: [
-            {
-              label: 'Total attendance (slots)',
-              data: values
-              // No explicit colors; Chart.js picks defaults
-            }
-          ]
+          datasets: [{ label: 'Total attendance (slots)', data: values }]
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
-          // Horizontal bars when many players (easier to read):
-          indexAxis: labels.length > 10 ? 'y' : 'x',
+          maintainAspectRatio: false,   // allow our custom height
+          indexAxis: 'y',               // horizontal bars
           scales: {
             x: { beginAtZero: true, title: { display: true, text: 'Slots' } },
-            y: { ticks: { autoSkip: false } }
+            y: {
+              ticks: { autoSkip: false, maxTicksLimit: 50 }, // always show names
+            }
           },
           plugins: {
             legend: { display: false },
             tooltip: { mode: 'nearest', intersect: false }
-          }
+          },
+          layout: { padding: { right: 8 } }
         }
       });
     }
