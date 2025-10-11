@@ -369,12 +369,24 @@
     }
 
     function renderPlayers(players) {
-      playersList.innerHTML = players.map(p => `<li>• ${p.name}${p.email ? ` <span class=\"text-gray-500\">(${p.email})</span>`: ''}</li>`).join('');
-      // Fill selects
+      // Re-query in case DOM changed
+      const playersList = document.getElementById('playersList'); // may be null
+      const attPlayer   = document.getElementById('attPlayer');
+      const payPlayer   = document.getElementById('payPlayer');
+
+      // Fill admin selects
       const opts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-      attPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
-      payPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+      if (attPlayer) attPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+      if (payPlayer) payPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+
+      // Update the public list only if it exists in the DOM
+      if (playersList) {
+        playersList.innerHTML = players
+          .map(p => `• ${p.name}${p.email ? ` <span class="text-gray-500">(${p.email})</span>` : ''}`)
+          .join('<br/>');
+      }
     }
+
 
     function renderAttendance(rows) {
       attendanceBody.innerHTML = rows.map(r => `
@@ -416,7 +428,7 @@
       ]);
 
       // Keep players fetch if Admin selects rely on it
-       renderPlayers(players);
+      renderPlayers(players);
       renderAttendance(attendance);
       renderPayments(payments);
       renderBalances(balances);
