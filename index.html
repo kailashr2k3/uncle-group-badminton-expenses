@@ -35,6 +35,40 @@
         </div>
       </div>
 
+      <!-- Matches by Session -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Matches (by Session)</h2>
+          <div class="flex items-center gap-2">
+            <label class="text-sm">Date</label>
+            <input type="date" id="pubMatchDate" class="border rounded px-2 py-1" />
+            <button id="pubLoadMatches" class="px-3 py-1 rounded bg-gray-200">Load</button>
+          </div>
+        </div>
+
+        <div id="pubMatchesContainer" class="space-y-3"></div>
+      </div>
+
+      <!-- Player Error Stats (for selected date) -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Player Error Stats</h2>
+          <div class="text-sm text-gray-500" id="pubStatsDateLabel"></div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-left px-3 py-2">Reason</th>
+                <th class="text-right px-3 py-2">Count</th>
+              </tr>
+            </thead>
+            <tbody id="pubPlayerStatsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Per-Player Total Attendance (Chart) -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
@@ -196,6 +230,8 @@
               <div>
                 <label class="text-sm">Team A players</label>
                 <select id="sc_teamA_players" class="w-full border rounded px-3 py-2" multiple size="4"></select>
+                <label class="text-sm mt-2 block">Team 1 name</label>
+                  <input id="sc_teamA_name" class="w-full border rounded px-3 py-2" value="Team A" />
                 <div class="flex gap-2 mt-2">
                   <input id="sc_teamA_guest" class="flex-1 border rounded px-3 py-2" placeholder="Add guest name" />
                   <button id="sc_teamA_addGuest" class="px-3 py-2 rounded bg-gray-200">Add</button>
@@ -206,6 +242,8 @@
               <div>
                 <label class="text-sm">Team B players</label>
                 <select id="sc_teamB_players" class="w-full border rounded px-3 py-2" multiple size="4"></select>
+                <label class="text-sm mt-2 block">Team 2 name</label>
+                <input id="sc_teamB_name" class="w-full border rounded px-3 py-2" value="Team B" />
                 <div class="flex gap-2 mt-2">
                   <input id="sc_teamB_guest" class="flex-1 border rounded px-3 py-2" placeholder="Add guest name" />
                   <button id="sc_teamB_addGuest" class="px-3 py-2 rounded bg-gray-200">Add</button>
@@ -239,6 +277,11 @@
                   <button id="sc_pointA" class="px-4 py-2 rounded bg-blue-600 text-white">+1 Team A</button>
                   <button id="sc_pointB" class="px-4 py-2 rounded bg-indigo-600 text-white">+1 Team B</button>
                   <button id="sc_undo" class="px-4 py-2 rounded bg-gray-200">Undo</button>
+                  <button id="sc_finish" class="px-4 py-2 rounded bg-emerald-600 text-white">Finish Match</button>
+                  <label class="flex items-center gap-1 text-sm text-gray-600">
+                    <input type="checkbox" id="sc_force" />
+                    Force finish
+                  </label>
                 </div>
 
                 <div>
@@ -454,6 +497,152 @@
       return data || [];
     }
 
+    async function fetchMatchSummaryByDate(dateStr) {
+      // summary has team names + scores + winner
+      const { data, error } = await supabase
+        .from('match_summary')
+        .select('*')
+        .eq('date', dateStr)
+        .order('created_at', { ascending: false });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchRostersByMatchIds(matchIds) {
+      if (!matchIds.length) return [];
+      const { data, error } = await supabase
+        .from('match_team_roster')
+        .select('*')
+        .in('match_id', matchIds);
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchEventsByMatch(matchId) {
+      const { data, error } = await supabase
+        .from('match_events')
+        .select('seq, scoring_team_id, reason, error_player_id, note, created_at')
+        .eq('match_id', matchId)
+        .order('seq', { ascending: true });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    async function fetchPlayerErrorStatsByDate(dateStr) {
+      const { data, error } = await supabase
+        .from('player_error_stats_by_date')
+        .select('*')
+        .eq('date', dateStr)
+        .order('player_name', { ascending: true });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    }
+
+    function renderPlayerErrorStats(dateStr, rows) {
+      document.getElementById('pubStatsDateLabel').textContent = dateStr ? `Date: ${dateStr}` : '';
+      const body = document.getElementById('pubPlayerStatsBody');
+      if (!body) return;
+      if (!rows || !rows.length) {
+        body.innerHTML = `<tr><td class="px-3 py-2" colspan="3">No error stats.</td></tr>`;
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+        <tr class="border-b last:border-0">
+          <td class="px-3 py-2">${r.player_name}</td>
+          <td class="px-3 py-2">${r.reason.replaceAll('_',' ')}</td>
+          <td class="px-3 py-2 text-right">${r.reason_count}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderMatchesByDate(dateStr, summaryRows, rosters) {
+      const host = document.getElementById('pubMatchesContainer');
+      if (!host) return;
+
+      if (!summaryRows.length) {
+        host.innerHTML = `<div class="text-sm text-gray-500">No matches for ${dateStr}.</div>`;
+        return;
+      }
+
+      const rosterByTeam = new Map();
+      for (const r of rosters) {
+        rosterByTeam.set(r.team_id, {
+          players: r.players || '',
+          guests: r.guests || ''
+        });
+      }
+
+      host.innerHTML = summaryRows.map(s => {
+        const r1 = rosterByTeam.get(s.team1_id) || {};
+        const r2 = rosterByTeam.get(s.team2_id) || {};
+        const winnerBadge = s.winner_name ? `<span class="ml-2 text-xs rounded bg-emerald-100 text-emerald-800 px-2 py-0.5">Winner: ${s.winner_name}</span>` : '';
+
+        return `
+          <details class="rounded border p-3">
+            <summary class="cursor-pointer list-none">
+              <div class="flex items-center justify-between">
+                <div class="font-medium">
+                  ${s.team1_name} <span class="font-semibold">${s.team1_points}</span>
+                  <span class="mx-2">–</span>
+                  <span class="font-semibold">${s.team2_points}</span> ${s.team2_name}
+                  ${winnerBadge}
+                </div>
+                <div class="text-xs text-gray-500">${s.status === 'finished' ? 'Finished' : 'Open'} • ${s.date}</div>
+              </div>
+              <div class="text-xs text-gray-600 mt-1">
+                <b>${s.team1_name}</b>:
+                ${r1.players ? r1.players : ''}${r1.guests ? (r1.players ? '; ' : '') + `Guests: ${r1.guests}` : ''}
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                <b>${s.team2_name}</b>:
+                ${r2.players ? r2.players : ''}${r2.guests ? (r2.players ? '; ' : '') + `Guests: ${r2.guests}` : ''}
+              </div>
+            </summary>
+
+            <div class="mt-3" id="match-${s.match_id}-events">
+              <div class="text-xs text-gray-500">Loading rallies…</div>
+            </div>
+          </details>
+        `;
+      }).join('');
+
+      // lazy-load each match's event list (point-by-point)
+      summaryRows.forEach(async (s) => {
+        const events = await fetchEventsByMatch(s.match_id);
+        const mount = document.getElementById(`match-${s.match_id}-events`);
+        if (!mount) return;
+        if (!events.length) {
+          mount.innerHTML = `<div class="text-sm text-gray-500">No rallies recorded.</div>`;
+          return;
+        }
+        const rows = events.map(ev => {
+          const team = ev.scoring_team_id === s.team1_id ? s.team1_name : s.team2_name;
+          const reason = (ev.reason || '').replaceAll('_',' ');
+          const note = ev.note || '';
+          return `
+            <tr class="border-b last:border-0">
+              <td class="px-3 py-1">${ev.seq}</td>
+              <td class="px-3 py-1">${team}</td>
+              <td class="px-3 py-1">${reason}</td>
+              <td class="px-3 py-1">${note}</td>
+            </tr>`;
+        }).join('');
+        mount.innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="bg-gray-100">
+                  <th class="text-left px-3 py-2">#</th>
+                  <th class="text-left px-3 py-2">Scoring Team</th>
+                  <th class="text-left px-3 py-2">Reason</th>
+                  <th class="text-left px-3 py-2">Note</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      });
+    }
+
     /* ===== Public pagination (Attendance/Payments only) ===== */
     const PUB_ATT = { data: [], page: 1, pageSize: 10 };
     const PUB_PAY = { data: [], page: 1, pageSize: 10 };
@@ -640,13 +829,16 @@
       const date = (document.getElementById('sc_date').value || '').trim();
       if (!date) return alert('Choose a session date.');
 
-      // collect players for each team
+      const nameA = (document.getElementById('sc_teamA_name').value || 'Team A').trim();
+      const nameB = (document.getElementById('sc_teamB_name').value || 'Team B').trim();
+
       const selA = [...document.getElementById('sc_teamA_players').selectedOptions].map(o => o.value);
       const selB = [...document.getElementById('sc_teamB_players').selectedOptions].map(o => o.value);
       if (!selA.length || !selB.length) return alert('Pick at least one player per team (or add guests).');
 
-      // 1) create match
       const note = document.getElementById('sc_note').value || null;
+
+      // 1) match
       const { data: m1, error: e1 } = await supabase.from('matches')
         .insert({ date, note })
         .select('id')
@@ -656,16 +848,19 @@
       SC.matchId = match_id;
       document.getElementById('sc_matchId').textContent = match_id;
 
-      // 2) create 2 teams
+      // 2) teams with custom names
       const { data: teams, error: e2 } = await supabase.from('match_teams')
-        .insert([{ match_id, name: 'Team A' }, { match_id, name: 'Team B' }])
+        .insert([{ match_id, name: nameA }, { match_id, name: nameB }])
         .select('id,name')
-        ;
+      ;
       if (e2) return alert(e2.message);
 
-      const teamA = teams.find(t => t.name === 'Team A').id;
-      const teamB = teams.find(t => t.name === 'Team B').id;
+      const tSorted = [...teams].sort((a,b)=>a.name.localeCompare(b.name)); // consistent with summary/rules
+      const teamA = tSorted[0].id;
+      const teamB = tSorted[1].id;
       SC.teamA = teamA; SC.teamB = teamB;
+      SC.teamA_name = tSorted[0].name;
+      SC.teamB_name = tSorted[1].name;
 
       // 3) add team players (registered & guests)
       const tp = [];
@@ -686,6 +881,10 @@
         errorSel.innerHTML = '<option value="">—</option>' +
           playersData.sort((a,b)=>a.name.localeCompare(b.name)).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
       }
+
+      // label live header
+      document.getElementById('sc_teamA_name').textContent = SC.teamA_name;
+      document.getElementById('sc_teamB_name').textContent = SC.teamB_name;
 
       // show live panel and reset score
       document.getElementById('sc_live').classList.remove('hidden');
@@ -810,6 +1009,63 @@
       if (error) alert(error.message);
       e.target.reset();
       refreshAll();
+    });
+
+    document.getElementById('sc_finish').onclick = async () => {
+      if (!SC.matchId) return alert('No active match.');
+      const force = !!document.getElementById('sc_force').checked;
+
+      const { data, error } = await supabase.rpc('finish_match', {
+        p_match_id: SC.matchId,
+        p_force: force
+      });
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      const res = (data && data[0]) || {};
+      const a = res.score_a ?? 0;
+      const b = res.score_b ?? 0;
+
+      // lock the UI
+      ['sc_pointA','sc_pointB','sc_undo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = true;
+      });
+
+      updateScoreUI(a, b);
+
+      const winnerLabel = (res.winner_team_id === SC.teamA) ? document.getElementById('sc_teamA_name').textContent
+                        : (res.winner_team_id === SC.teamB) ? document.getElementById('sc_teamB_name').textContent
+                        : '—';
+      document.getElementById('sc_status').textContent = `Finished ${a}–${b}. Winner: ${winnerLabel}`;
+    };
+
+    document.getElementById('pubLoadMatches').onclick = async () => {
+      const dateStr = document.getElementById('pubMatchDate').value;
+      if (!dateStr) { alert('Select a date'); return; }
+
+      const [summary, stats] = await Promise.all([
+        fetchMatchSummaryByDate(dateStr),
+        fetchPlayerErrorStatsByDate(dateStr)
+      ]);
+
+      const matchIds = summary.map(s => s.match_id);
+      const rosters = await fetchRostersByMatchIds(matchIds);
+
+      renderMatchesByDate(dateStr, summary, rosters);
+      renderPlayerErrorStats(dateStr, stats);
+    };
+
+    // (Optional) default to today
+    document.addEventListener('DOMContentLoaded', () => {
+      const el = document.getElementById('pubMatchDate');
+      if (el && !el.value) {
+        const d = new Date(); const iso = d.toISOString().slice(0,10);
+        el.value = iso;
+      }
     });
 
     // Boot
