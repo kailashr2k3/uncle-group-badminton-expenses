@@ -179,6 +179,94 @@
             <input class="w-full border rounded px-3 py-2" placeholder="Note" name="note" />
             <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Payment</button>
           </form>
+
+          <!-- SCORING -->
+          <div class="bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
+            <h3 class="font-medium mb-3">Match Scoring (Doubles, to 21)</h3>
+
+            <!-- Setup -->
+            <div class="grid md:grid-cols-3 gap-4">
+              <div>
+                <label class="text-sm">Session Date</label>
+                <input type="date" id="sc_date" class="w-full border rounded px-3 py-2" />
+                <label class="text-sm mt-2 block">Notes (optional)</label>
+                <input id="sc_note" class="w-full border rounded px-3 py-2" placeholder="e.g., Court 8 PIN 29610" />
+              </div>
+
+              <div>
+                <label class="text-sm">Team A players</label>
+                <select id="sc_teamA_players" class="w-full border rounded px-3 py-2" multiple size="4"></select>
+                <div class="flex gap-2 mt-2">
+                  <input id="sc_teamA_guest" class="flex-1 border rounded px-3 py-2" placeholder="Add guest name" />
+                  <button id="sc_teamA_addGuest" class="px-3 py-2 rounded bg-gray-200">Add</button>
+                </div>
+                <div id="sc_teamA_guestList" class="text-xs text-gray-600 mt-1"></div>
+              </div>
+
+              <div>
+                <label class="text-sm">Team B players</label>
+                <select id="sc_teamB_players" class="w-full border rounded px-3 py-2" multiple size="4"></select>
+                <div class="flex gap-2 mt-2">
+                  <input id="sc_teamB_guest" class="flex-1 border rounded px-3 py-2" placeholder="Add guest name" />
+                  <button id="sc_teamB_addGuest" class="px-3 py-2 rounded bg-gray-200">Add</button>
+                </div>
+                <div id="sc_teamB_guestList" class="text-xs text-gray-600 mt-1"></div>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <button id="sc_createMatch" class="px-4 py-2 rounded bg-emerald-600 text-white">Create / Start Match</button>
+              <span id="sc_status" class="text-sm text-gray-600 ml-2"></span>
+            </div>
+
+            <hr class="my-4" />
+
+            <!-- Live scoring -->
+            <div id="sc_live" class="hidden">
+              <div class="flex items-center justify-between">
+                <div class="text-lg font-semibold">
+                  <span id="sc_teamA_name">Team A</span>
+                  <span id="sc_scoreA" class="ml-2 text-2xl">0</span>
+                  <span class="mx-2">–</span>
+                  <span id="sc_scoreB" class="mr-2 text-2xl">0</span>
+                  <span id="sc_teamB_name">Team B</span>
+                </div>
+                <div class="text-sm text-gray-600">Match ID: <span id="sc_matchId">–</span></div>
+              </div>
+
+              <div class="mt-4 grid md:grid-cols-4 gap-3">
+                <div class="md:col-span-2 flex gap-2">
+                  <button id="sc_pointA" class="px-4 py-2 rounded bg-blue-600 text-white">+1 Team A</button>
+                  <button id="sc_pointB" class="px-4 py-2 rounded bg-indigo-600 text-white">+1 Team B</button>
+                  <button id="sc_undo" class="px-4 py-2 rounded bg-gray-200">Undo</button>
+                </div>
+
+                <div>
+                  <label class="text-sm">Reason</label>
+                  <select id="sc_reason" class="w-full border rounded px-3 py-2">
+                    <option value="rally">Rally won</option>
+                    <option value="service_error">Service error</option>
+                    <option value="unforced_error">Unforced error</option>
+                    <option value="out">Shuttle out</option>
+                    <option value="net">Net</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="text-sm">Error by (optional)</label>
+                  <select id="sc_error_player" class="w-full border rounded px-3 py-2">
+                    <option value="">—</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mt-3">
+                <input id="sc_event_note" class="w-full border rounded px-3 py-2" placeholder="Note (optional)" />
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>
@@ -496,6 +584,174 @@
       const limit = limitSel ? Number(limitSel.value) : 10;
       renderPlayerAttendanceChart(attendance, limit);
     }
+
+    /* ========= SCORING STATE ========= */
+    const SC = {
+      matchId: null,
+      teamA: null, teamB: null,
+      teamA_name: 'Team A', teamB_name: 'Team B',
+      teamA_guests: [],
+      teamB_guests: [],
+      seq: 0, // will be derived from DB
+    };
+
+    /* ========= HELPERS ========= */
+    function fillMultiSelectPlayers(selEl, players) {
+      selEl.innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+    function renderGuestLists() {
+      document.getElementById('sc_teamA_guestList').textContent = SC.teamA_guests.length
+        ? 'Guests: ' + SC.teamA_guests.join(', ')
+        : '';
+      document.getElementById('sc_teamB_guestList').textContent = SC.teamB_guests.length
+        ? 'Guests: ' + SC.teamB_guests.join(', ')
+        : '';
+    }
+    async function getCurrentScore(match_id) {
+      const { data, error } = await supabase
+        .from('match_events')
+        .select('scoring_team_id')
+        .eq('match_id', match_id)
+        .order('seq', { ascending: true });
+      if (error) { console.error(error); return { a:0, b:0, seq:0 }; }
+      let a=0, b=0, seq=0;
+      for (const r of data) {
+        seq++;
+        if (r.scoring_team_id === SC.teamA) a++; else if (r.scoring_team_id === SC.teamB) b++;
+      }
+      return { a, b, seq };
+    }
+    function updateScoreUI(a, b) {
+      document.getElementById('sc_scoreA').textContent = a;
+      document.getElementById('sc_scoreB').textContent = b;
+    }
+
+    /* ========= CREATE / START MATCH ========= */
+    document.getElementById('sc_teamA_addGuest').onclick = () => {
+      const v = document.getElementById('sc_teamA_guest').value.trim();
+      if (v) { SC.teamA_guests.push(v); document.getElementById('sc_teamA_guest').value=''; renderGuestLists(); }
+    };
+    document.getElementById('sc_teamB_addGuest').onclick = () => {
+      const v = document.getElementById('sc_teamB_guest').value.trim();
+      if (v) { SC.teamB_guests.push(v); document.getElementById('sc_teamB_guest').value=''; renderGuestLists(); }
+    };
+
+    document.getElementById('sc_createMatch').onclick = async () => {
+      const date = (document.getElementById('sc_date').value || '').trim();
+      if (!date) return alert('Choose a session date.');
+
+      // collect players for each team
+      const selA = [...document.getElementById('sc_teamA_players').selectedOptions].map(o => o.value);
+      const selB = [...document.getElementById('sc_teamB_players').selectedOptions].map(o => o.value);
+      if (!selA.length || !selB.length) return alert('Pick at least one player per team (or add guests).');
+
+      // 1) create match
+      const note = document.getElementById('sc_note').value || null;
+      const { data: m1, error: e1 } = await supabase.from('matches')
+        .insert({ date, note })
+        .select('id')
+        .single();
+      if (e1) return alert(e1.message);
+      const match_id = m1.id;
+      SC.matchId = match_id;
+      document.getElementById('sc_matchId').textContent = match_id;
+
+      // 2) create 2 teams
+      const { data: teams, error: e2 } = await supabase.from('match_teams')
+        .insert([{ match_id, name: 'Team A' }, { match_id, name: 'Team B' }])
+        .select('id,name')
+        ;
+      if (e2) return alert(e2.message);
+
+      const teamA = teams.find(t => t.name === 'Team A').id;
+      const teamB = teams.find(t => t.name === 'Team B').id;
+      SC.teamA = teamA; SC.teamB = teamB;
+
+      // 3) add team players (registered & guests)
+      const tp = [];
+      selA.forEach(pid => tp.push({ match_team_id: teamA, player_id: pid }));
+      selB.forEach(pid => tp.push({ match_team_id: teamB, player_id: pid }));
+      SC.teamA_guests.forEach(g => tp.push({ match_team_id: teamA, guest_name: g }));
+      SC.teamB_guests.forEach(g => tp.push({ match_team_id: teamB, guest_name: g }));
+      if (tp.length) {
+        const { error: e3 } = await supabase.from('match_team_players').insert(tp);
+        if (e3) return alert(e3.message);
+      }
+
+      // Seed error-player dropdown with all registered players from both teams
+      const allPlayers = [...selA, ...selB];
+      const { data: playersData } = await supabase.from('players').select('id,name').in('id', allPlayers);
+      const errorSel = document.getElementById('sc_error_player');
+      if (playersData && errorSel) {
+        errorSel.innerHTML = '<option value="">—</option>' +
+          playersData.sort((a,b)=>a.name.localeCompare(b.name)).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      }
+
+      // show live panel and reset score
+      document.getElementById('sc_live').classList.remove('hidden');
+      document.getElementById('sc_status').textContent = `Match created for ${date}`;
+      const { a, b, seq } = await getCurrentScore(match_id);
+      SC.seq = seq;
+      updateScoreUI(a, b);
+    };
+
+    /* ========= RECORD POINTS & UNDO ========= */
+    async function recordPoint(scoringTeamId) {
+      if (!SC.matchId || !SC.teamA || !SC.teamB) return;
+
+      // next sequence number
+      SC.seq += 1;
+
+      const reason = document.getElementById('sc_reason').value || 'rally';
+      const error_player_id = document.getElementById('sc_error_player').value || null;
+      const note = document.getElementById('sc_event_note').value || null;
+
+      const payload = {
+        match_id: SC.matchId,
+        seq: SC.seq,
+        scoring_team_id: scoringTeamId,
+        reason,
+        error_player_id: error_player_id || null,
+        note
+      };
+
+      const { error } = await supabase.from('match_events').insert(payload);
+      if (error) {
+        // rollback seq if failed
+        SC.seq -= 1;
+        return alert(error.message);
+      }
+
+      const s = await getCurrentScore(SC.matchId);
+      SC.seq = s.seq;
+      updateScoreUI(s.a, s.b);
+      document.getElementById('sc_event_note').value = '';
+    }
+
+    document.getElementById('sc_pointA').onclick = () => recordPoint(SC.teamA);
+    document.getElementById('sc_pointB').onclick = () => recordPoint(SC.teamB);
+
+    document.getElementById('sc_undo').onclick = async () => {
+      if (!SC.matchId || SC.seq <= 0) return;
+      const { error } = await supabase
+        .from('match_events')
+        .delete()
+        .eq('match_id', SC.matchId)
+        .eq('seq', SC.seq);
+      if (error) return alert(error.message);
+      SC.seq -= 1;
+      const s = await getCurrentScore(SC.matchId);
+      SC.seq = s.seq;
+      updateScoreUI(s.a, s.b);
+    };
+
+    /* ========= INIT PLAYER LISTS FOR TEAM PICKERS ========= */
+    async function initScoringPickers() {
+      const players = await fetchPlayers();
+      fillMultiSelectPlayers(document.getElementById('sc_teamA_players'), players);
+      fillMultiSelectPlayers(document.getElementById('sc_teamB_players'), players);
+    }
+    document.addEventListener('DOMContentLoaded', initScoringPickers);
 
     // Forms (Admin)
     document.getElementById('playerForm').addEventListener('submit', async (e) => {
