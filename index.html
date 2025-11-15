@@ -35,40 +35,6 @@
         </div>
       </div>
 
-      <!-- Matches by Session -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Matches (by Session)</h2>
-          <div class="flex items-center gap-2">
-            <label class="text-sm">Date</label>
-            <input type="date" id="pubMatchDate" class="border rounded px-2 py-1" />
-            <button id="pubLoadMatches" class="px-3 py-1 rounded bg-gray-200">Load</button>
-          </div>
-        </div>
-
-        <div id="pubMatchesContainer" class="space-y-3"></div>
-      </div>
-
-      <!-- Player Error Stats (for selected date) -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Player Error Stats</h2>
-          <div class="text-sm text-gray-500" id="pubStatsDateLabel"></div>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-left px-3 py-2">Reason</th>
-                <th class="text-right px-3 py-2">Count</th>
-              </tr>
-            </thead>
-            <tbody id="pubPlayerStatsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
       <!-- Per-Player Total Attendance (Chart) -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
@@ -160,6 +126,41 @@
           </table>
         </div>
       </div>
+
+      <!-- Matches by Session -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Matches (by Session)</h2>
+          <div class="flex items-center gap-2">
+            <label class="text-sm">Date</label>
+            <input type="date" id="pubMatchDate" class="border rounded px-2 py-1" />
+            <button id="pubLoadMatches" class="px-3 py-1 rounded bg-gray-200">Load</button>
+          </div>
+        </div>
+
+        <div id="pubMatchesContainer" class="space-y-3"></div>
+      </div>
+
+      <!-- Player Error Stats (for selected date) -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Player Error Stats</h2>
+          <div class="text-sm text-gray-500" id="pubStatsDateLabel"></div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-left px-3 py-2">Reason</th>
+                <th class="text-right px-3 py-2">Count</th>
+              </tr>
+            </thead>
+            <tbody id="pubPlayerStatsBody"></tbody>
+          </table>
+        </div>
+      </div>      
+
     </section>
 
     <!-- Admin Panel (hidden until toggled) -->
