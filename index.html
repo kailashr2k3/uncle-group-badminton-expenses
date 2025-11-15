@@ -122,6 +122,20 @@
             <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Expense</button>
           </form>
 
+          <div class="flex items-center justify-between mb-2">
+            <div class="space-x-2">
+              <button id="attPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="attPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="attNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="attPageSize" class="border rounded px-2 py-1">
+                <option>5</option><option selected>10</option><option>20</option><option>50</option>
+              </select>
+            </label>
+          </div>
+
           <!-- Add Attendance -->
           <form id="attendanceForm" class="space-y-2">
             <h3 class="font-medium">Add Attendance</h3>
@@ -131,6 +145,20 @@
             <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add/Update Attendance</button>
             <p class="text-xs text-gray-500">Unique per (date, player). Re-submit to update slots.</p>
           </form>
+
+          <div class="flex items-center justify-between mb-2">
+            <div class="space-x-2">
+              <button id="payPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="payPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="payNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="payPageSize" class="border rounded px-2 py-1">
+                <option>5</option><option selected>10</option><option>20</option><option>50</option>
+              </select>
+            </label>
+          </div>
 
           <!-- Add Payment -->
           <form id="paymentForm" class="space-y-2">
@@ -341,6 +369,92 @@
       return data || [];
     }
 
+    // Pagination state
+    const ATT = { data: [], page: 1, pageSize: 10 };
+    const PAY = { data: [], page: 1, pageSize: 10 };
+
+    function paginate(arr, page, size) {
+      const start = (page - 1) * size;
+      return arr.slice(start, start + size);
+    }
+
+    // ------- Attendance -------
+    function renderAttendancePaginated() {
+      const container = document.getElementById('attendanceList'); // UL/TBODY/etc.
+      if (!container) return;
+
+      const total = ATT.data.length;
+      const pages = Math.max(1, Math.ceil(total / ATT.pageSize));
+      if (ATT.page > pages) ATT.page = pages;
+
+      const pageItems = paginate(ATT.data, ATT.page, ATT.pageSize);
+
+      // TODO: Replace this with your existing row HTML
+      container.innerHTML = pageItems.map(r => `
+        <tr>
+          <td>${r.date}</td>
+          <td>${r.players?.name ?? r.player_id}</td>
+          <td>${r.slots}</td>
+        </tr>
+      `).join('');
+
+      // Controls
+      const info = document.getElementById('attPageInfo');
+      if (info) info.textContent = `${ATT.page} / ${pages} (${total})`;
+      const prev = document.getElementById('attPrev');
+      const next = document.getElementById('attNext');
+      if (prev) prev.disabled = ATT.page <= 1;
+      if (next) next.disabled = ATT.page >= pages;
+    }
+
+    // ------- Payments -------
+    function renderPaymentsPaginated() {
+      const container = document.getElementById('paymentsList'); // UL/TBODY/etc.
+      if (!container) return;
+
+      const total = PAY.data.length;
+      const pages = Math.max(1, Math.ceil(total / PAY.pageSize));
+      if (PAY.page > pages) PAY.page = pages;
+
+      const pageItems = paginate(PAY.data, PAY.page, PAY.pageSize);
+
+      // TODO: Replace this with your existing row HTML
+      container.innerHTML = pageItems.map(r => `
+        <tr>
+          <td>${r.date}</td>
+          <td>${r.players?.name ?? r.player_id}</td>
+          <td>${Number(r.amount).toFixed(2)}</td>
+          <td>${r.note ?? ''}</td>
+        </tr>
+      `).join('');
+
+      // Controls
+      const info = document.getElementById('payPageInfo');
+      if (info) info.textContent = `${PAY.page} / ${pages} (${total})`;
+      const prev = document.getElementById('payPrev');
+      const next = document.getElementById('payNext');
+      if (prev) prev.disabled = PAY.page <= 1;
+      if (next) next.disabled = PAY.page >= pages;
+    }
+
+    // Wire control events once DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const attPrev = document.getElementById('attPrev');
+      const attNext = document.getElementById('attNext');
+      const attSize = document.getElementById('attPageSize');
+      if (attPrev) attPrev.onclick = () => { if (ATT.page > 1) { ATT.page--; renderAttendancePaginated(); } };
+      if (attNext) attNext.onclick = () => { ATT.page++; renderAttendancePaginated(); };
+      if (attSize) attSize.onchange = e => { ATT.pageSize = Number(e.target.value || 10); ATT.page = 1; renderAttendancePaginated(); };
+
+      const payPrev = document.getElementById('payPrev');
+      const payNext = document.getElementById('payNext');
+      const paySize = document.getElementById('payPageSize');
+      if (payPrev) payPrev.onclick = () => { if (PAY.page > 1) { PAY.page--; renderPaymentsPaginated(); } };
+      if (payNext) payNext.onclick = () => { PAY.page++; renderPaymentsPaginated(); };
+      if (paySize) paySize.onchange = e => { PAY.pageSize = Number(e.target.value || 10); PAY.page = 1; renderPaymentsPaginated(); };
+    });
+
+
     async function fetchAttendance() {
       const { data, error } = await supabase
         .from('attendance')
@@ -427,10 +541,16 @@
         fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances()
       ]);
 
+      // Store datasets and render first pages
+      ATT.data = attendance || [];
+      PAY.data = payments || [];
+
       // Keep players fetch if Admin selects rely on it
       renderPlayers(players);
-      renderAttendance(attendance);
-      renderPayments(payments);
+      //renderAttendance(attendance);
+      //renderPayments(payments);
+      renderAttendancePaginated();
+      renderPaymentsPaginated();
       renderBalances(balances);
 
       window.__lastAttendanceRows = attendance; // for the limit dropdown
