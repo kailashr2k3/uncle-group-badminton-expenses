@@ -369,6 +369,15 @@
       return data || [];
     }
 
+    function byId(...ids){
+      for (const id of ids){
+        const el = document.getElementById(id);
+        if (el) return el;
+      }
+      return null;
+    }
+
+
     // Pagination state
     const ATT = { data: [], page: 1, pageSize: 10 };
     const PAY = { data: [], page: 1, pageSize: 10 };
@@ -378,64 +387,55 @@
       return arr.slice(start, start + size);
     }
 
-    // ------- Attendance -------
+    /* ---------- ATTENDANCE ---------- */
     function renderAttendancePaginated() {
-      const container = document.getElementById('attendanceList'); // UL/TBODY/etc.
-      if (!container) return;
+      const container = byId('attendanceList','attendanceTableBody','attList','attTbody'); // try your real IDs here
+      if (!container) { console.warn('Attendance container not found'); return; }
 
-      const total = ATT.data.length;
+      const total = ATT.data?.length || 0;
       const pages = Math.max(1, Math.ceil(total / ATT.pageSize));
-      if (ATT.page > pages) ATT.page = pages;
+      ATT.page = Math.min(Math.max(1, ATT.page), pages);
 
       const pageItems = paginate(ATT.data, ATT.page, ATT.pageSize);
 
-      // TODO: Replace this with your existing row HTML
       container.innerHTML = pageItems.map(r => `
         <tr>
           <td>${r.date}</td>
-          <td>${r.players?.name ?? r.player_id}</td>
+          <td>${r.players?.name ?? r.player_name ?? r.player_id}</td>
           <td>${r.slots}</td>
         </tr>
       `).join('');
 
-      // Controls
-      const info = document.getElementById('attPageInfo');
-      if (info) info.textContent = `${ATT.page} / ${pages} (${total})`;
-      const prev = document.getElementById('attPrev');
-      const next = document.getElementById('attNext');
-      if (prev) prev.disabled = ATT.page <= 1;
-      if (next) next.disabled = ATT.page >= pages;
+      const info = byId('attPageInfo'); if (info) info.textContent = `${ATT.page} / ${pages} (${total})`;
+      const prev = byId('attPrev'); if (prev) prev.disabled = ATT.page <= 1;
+      const next = byId('attNext'); if (next) next.disabled = ATT.page >= pages;
     }
 
-    // ------- Payments -------
+    /* ---------- PAYMENTS ---------- */
     function renderPaymentsPaginated() {
-      const container = document.getElementById('paymentsList'); // UL/TBODY/etc.
-      if (!container) return;
+      const container = byId('paymentsList','paymentsTableBody','payList','payTbody'); // try your real IDs here
+      if (!container) { console.warn('Payments container not found'); return; }
 
-      const total = PAY.data.length;
+      const total = PAY.data?.length || 0;
       const pages = Math.max(1, Math.ceil(total / PAY.pageSize));
-      if (PAY.page > pages) PAY.page = pages;
+      PAY.page = Math.min(Math.max(1, PAY.page), pages);
 
       const pageItems = paginate(PAY.data, PAY.page, PAY.pageSize);
 
-      // TODO: Replace this with your existing row HTML
       container.innerHTML = pageItems.map(r => `
         <tr>
           <td>${r.date}</td>
-          <td>${r.players?.name ?? r.player_id}</td>
+          <td>${r.players?.name ?? r.player_name ?? r.player_id}</td>
           <td>${Number(r.amount).toFixed(2)}</td>
           <td>${r.note ?? ''}</td>
         </tr>
       `).join('');
 
-      // Controls
-      const info = document.getElementById('payPageInfo');
-      if (info) info.textContent = `${PAY.page} / ${pages} (${total})`;
-      const prev = document.getElementById('payPrev');
-      const next = document.getElementById('payNext');
-      if (prev) prev.disabled = PAY.page <= 1;
-      if (next) next.disabled = PAY.page >= pages;
+      const info = byId('payPageInfo'); if (info) info.textContent = `${PAY.page} / ${pages} (${total})`;
+      const prev = byId('payPrev'); if (prev) prev.disabled = PAY.page <= 1;
+      const next = byId('payNext'); if (next) next.disabled = PAY.page >= pages;
     }
+
 
     // Wire control events once DOM is ready
     document.addEventListener('DOMContentLoaded', () => {
@@ -559,6 +559,16 @@
       const limit = limitSel ? Number(limitSel.value) : 10;
       renderPlayerAttendanceChart(attendance, limit);
     }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      const attPrev = byId('attPrev'); if (attPrev) attPrev.onclick = () => { if (ATT.page > 1) { ATT.page--; renderAttendancePaginated(); } };
+      const attNext = byId('attNext'); if (attNext) attNext.onclick = () => { ATT.page++; renderAttendancePaginated(); };
+      const attSize = byId('attPageSize'); if (attSize) attSize.onchange = e => { ATT.pageSize = Number(e.target.value||10); ATT.page = 1; renderAttendancePaginated(); };
+
+      const payPrev = byId('payPrev'); if (payPrev) payPrev.onclick = () => { if (PAY.page > 1) { PAY.page--; renderPaymentsPaginated(); } };
+      const payNext = byId('payNext'); if (payNext) payNext.onclick = () => { PAY.page++; renderPaymentsPaginated(); };
+      const paySize = byId('payPageSize'); if (paySize) paySize.onchange = e => { PAY.pageSize = Number(e.target.value||10); PAY.page = 1; renderPaymentsPaginated(); };
+    });
 
     // Forms
     document.getElementById('playerForm').addEventListener('submit', async (e) => {
