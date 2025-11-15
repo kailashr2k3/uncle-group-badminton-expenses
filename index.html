@@ -22,68 +22,106 @@
         <h2 class="text-lg font-semibold mb-3">Balances</h2>
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm" id="balancesTable">
-            <thead><tr class="bg-gray-100">
-              <th class="text-left px-3 py-2">Player</th>
-              <th class="text-right px-3 py-2">Owed</th>
-              <th class="text-right px-3 py-2">Paid</th>
-              <th class="text-right px-3 py-2">Balance</th>
-            </tr></thead>
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-right px-3 py-2">Owed</th>
+                <th class="text-right px-3 py-2">Paid</th>
+                <th class="text-right px-3 py-2">Balance</th>
+              </tr>
+            </thead>
             <tbody id="balancesBody"></tbody>
           </table>
         </div>
       </div>
 
-    <!-- Per-Player Total Attendance -->
-    <div class="bg-white rounded-2xl shadow p-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
-        <select id="playerChartLimit" class="border rounded px-2 py-1 text-sm">
-          <option value="10" selected>Top 10</option>
-          <option value="20">Top 20</option>
-          <option value="50">Top 50</option>
-          <option value="0">All</option>
-        </select>
+      <!-- Per-Player Total Attendance (Chart) -->
+      <div class="bg-white rounded-2xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
+          <select id="playerChartLimit" class="border rounded px-2 py-1 text-sm">
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+            <option value="0">All</option>
+          </select>
+        </div>
+
+        <div id="playerChartWrapper" style="max-height: 620px; overflow:auto;">
+          <canvas id="playerAttendanceChart"></canvas>
+        </div>
+
+        <p id="playerChartEmpty" class="text-sm text-gray-500 hidden">
+          No attendance yet. Add some sessions in Admin → Attendance.
+        </p>
+
+        <p class="text-xs text-gray-500 mt-2">
+          Totals include <em>slots</em> (so +2 guests count as 2).
+        </p>
       </div>
 
-      <div id="playerChartWrapper" style="max-height: 620px; overflow:auto;">
-        <canvas id="playerAttendanceChart"></canvas>
-      </div>
-
-      <p id="playerChartEmpty" class="text-sm text-gray-500 hidden">
-        No attendance yet. Add some sessions in Admin → Attendance.
-      </p>
-
-      <p class="text-xs text-gray-500 mt-2">
-        Totals include <em>slots</em> (so +2 guests count as 2).
-      </p>
-    </div>
-
-      <!-- Attendance -->
+      <!-- Attendance (PUBLIC) -->
       <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
-        <h2 class="text-lg font-semibold mb-3">Attendance</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Attendance</h2>
+          <div class="flex items-center gap-3">
+            <div class="space-x-2">
+              <button id="pubAttPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="pubAttPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="pubAttNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="pubAttPageSize" class="border rounded px-2 py-1">
+                <option>5</option><option selected>10</option><option>20</option><option>50</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm" id="attendanceTable">
-            <thead><tr class="bg-gray-100">
-              <th class="text-left px-3 py-2">Date</th>
-              <th class="text-left px-3 py-2">Player</th>
-              <th class="text-right px-3 py-2">Slots (+1/+2)</th>
-            </tr></thead>
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Date</th>
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-right px-3 py-2">Slots (+1/+2)</th>
+              </tr>
+            </thead>
             <tbody id="attendanceBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Payments -->
+      <!-- Payments (PUBLIC) -->
       <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
-        <h2 class="text-lg font-semibold mb-3">Payments</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Payments</h2>
+          <div class="flex items-center gap-3">
+            <div class="space-x-2">
+              <button id="pubPayPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="pubPayPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="pubPayNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="pubPayPageSize" class="border rounded px-2 py-1">
+                <option>5</option><option selected>10</option><option>20</option><option>50</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm" id="paymentsTable">
-            <thead><tr class="bg-gray-100">
-              <th class="text-left px-3 py-2">Date</th>
-              <th class="text-left px-3 py-2">Player</th>
-              <th class="text-right px-3 py-2">Amount</th>
-              <th class="text-left px-3 py-2">Note</th>
-            </tr></thead>
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Date</th>
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-right px-3 py-2">Amount</th>
+                <th class="text-left px-3 py-2">Note</th>
+              </tr>
+            </thead>
             <tbody id="paymentsBody"></tbody>
           </table>
         </div>
@@ -122,20 +160,6 @@
             <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add Expense</button>
           </form>
 
-          <div class="flex items-center justify-between mb-2">
-            <div class="space-x-2">
-              <button id="attPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="attPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="attNext" class="px-2 py-1 border rounded">Next</button>
-            </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="attPageSize" class="border rounded px-2 py-1">
-                <option>5</option><option selected>10</option><option>20</option><option>50</option>
-              </select>
-            </label>
-          </div>
-
           <!-- Add Attendance -->
           <form id="attendanceForm" class="space-y-2">
             <h3 class="font-medium">Add Attendance</h3>
@@ -145,20 +169,6 @@
             <button class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Add/Update Attendance</button>
             <p class="text-xs text-gray-500">Unique per (date, player). Re-submit to update slots.</p>
           </form>
-
-          <div class="flex items-center justify-between mb-2">
-            <div class="space-x-2">
-              <button id="payPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="payPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="payNext" class="px-2 py-1 border rounded">Next</button>
-            </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="payPageSize" class="border rounded px-2 py-1">
-                <option>5</option><option selected>10</option><option>20</option><option>50</option>
-              </select>
-            </label>
-          </div>
 
           <!-- Add Payment -->
           <form id="paymentForm" class="space-y-2">
@@ -181,18 +191,17 @@
 
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-    // === CONFIG: Replace with your Supabase project details ===
+
+    /* ===== CONFIG ===== */
     const SUPABASE_URL = "https://ioxtxbgqaognzxscgkly.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveHR4YmdxYW9nbnp4c2Nna2x5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTgxMDksImV4cCI6MjA3NTczNDEwOX0.oIST2TVUJbg4H0PziuNdLBcSHFERkkM2M29bHpsYE-E";
+    const SUPABASE_ANON_KEY = "YOUR_ANON_KEY_HERE"; // keep as you had it
+    const SITE_URL = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/"; // trailing slash
 
-    // Init Supabase
+    /* ===== Init ===== */
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // MUST match Supabase Auth → URL Configuration → (Site URL + Redirect URL)
-    const SITE_URL = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/"; // keep the trailing slash
 
-    // UI handles
+    /* ===== UI handles ===== */
     const balancesBody = document.getElementById('balancesBody');
-    const playersList = document.getElementById('playersList');
     const attendanceBody = document.getElementById('attendanceBody');
     const paymentsBody = document.getElementById('paymentsBody');
     const adminPanel = document.getElementById('adminPanel');
@@ -203,23 +212,21 @@
     const attPlayer = document.getElementById('attPlayer');
     const payPlayer = document.getElementById('payPlayer');
 
+    /* ===== Admin toggle/auth ===== */
     adminToggle.addEventListener('click', async () => {
       adminPanel.classList.toggle('hidden');
       if (!adminPanel.classList.contains('hidden')) {
-        // Panel just opened: ensure status + prompt to sign in if not logged in
         updateAuthStatus();
         const user = await getUser();
         if (!user) { await signInFlow(); }
       }
     });
 
-    signInBtn.addEventListener('click', signInFlow);
-
-    signOutBtn.addEventListener('click', async () => {
+    signInBtn?.addEventListener('click', signInFlow);
+    signOutBtn?.addEventListener('click', async () => {
       await supabase.auth.signOut();
       updateAuthStatus();
     });
-
 
     async function getUser() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -231,40 +238,28 @@
       if (!email) return;
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo: SITE_URL  // comes back to your GitHub Page
-        }
+        options: { emailRedirectTo: SITE_URL }
       });
       if (error) alert(error.message);
       else alert("Magic link sent! Check your inbox.");
     }
 
-    let attendanceChart; // chart instance
-
-    function groupAttendanceByDate(rows) {
-      // rows have: { date, slots, players{name}, ... }
-      const map = new Map(); // date -> totalSlots
-      for (const r of rows) {
-        const key = r.date; // YYYY-MM-DD
-        map.set(key, (map.get(key) || 0) + Number(r.slots || 0));
-      }
-      // sort by date ascending
-      return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    async function updateAuthStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      authStatus.textContent = user ? `Signed in as ${user.email}` : 'Not signed in';
     }
 
-    let playerAttendanceChart; // chart instance
+    /* ===== Chart helpers ===== */
+    let playerAttendanceChart;
 
     function groupAttendanceByPlayer(rows) {
-      const map = new Map(); // name -> totalSlots
+      const map = new Map();
       for (const r of rows || []) {
         const name = r?.players?.name ?? 'Unknown';
         const slots = Number(r?.slots ?? 0);
         if (slots > 0) map.set(name, (map.get(name) || 0) + slots);
       }
-      // sort by total desc, then name asc
-      return [...map.entries()].sort((a, b) =>
-        b[1] === a[1] ? a[0].localeCompare(b[0]) : b[1] - a[1]
-      );
+      return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     }
 
     function renderPlayerAttendanceChart(rows, limit = 10) {
@@ -275,7 +270,6 @@
 
       let data = groupAttendanceByPlayer(rows);
 
-      // handle empty state
       if (!data.length) {
         wrapper.classList.add('hidden');
         emptyMsg.classList.remove('hidden');
@@ -291,7 +285,6 @@
       const labels = data.map(([name]) => name);
       const values = data.map(([, total]) => total);
 
-      // Auto-height per bar (horizontal bars)
       const perBar = 28, minH = 240, maxH = 700;
       canvas.height = Math.max(minH, Math.min(maxH, labels.length * perBar));
 
@@ -299,38 +292,22 @@
 
       playerAttendanceChart = new Chart(canvas, {
         type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Total attendance (slots)',
-              data: values
-            }
-          ]
-        },
+        data: { labels, datasets: [{ label: 'Total attendance (slots)', data: values }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          indexAxis: 'y', // horizontal bars
+          indexAxis: 'y',
           scales: {
             x: { beginAtZero: true, title: { display: true, text: 'Slots' } },
-            y: {
-              ticks: {
-                autoSkip: false,
-                callback: (val, i, ticks) => {
-                  const lbl = typeof val === 'number' ? ticks[i].label : val;
-                  return (lbl && lbl.length > 22) ? (lbl.slice(0, 22) + '…') : lbl;
-                }
-              }
-            }
+            y: { ticks: { autoSkip: false } }
           },
           plugins: {
             legend: { display: false },
             tooltip: { mode: 'nearest', intersect: false },
             datalabels: {
-              anchor: 'end',       // label position
-              align: 'right',      // label alignment
-              color: '#111',       // text color
+              anchor: 'end',
+              align: 'right',
+              color: '#111',
               font: { weight: 'bold' },
               formatter: (value, context) => {
                 const name = context.chart.data.labels[context.dataIndex];
@@ -341,119 +318,23 @@
           },
           layout: { padding: { right: 8 } }
         },
-        plugins: [ChartDataLabels] // 👈 register the plugin here
+        plugins: [ChartDataLabels]
       });
     }
 
-    // hook the limit dropdown
     document.addEventListener('change', (e) => {
-      if (e.target && e.target.id === 'playerChartLimit') {
+      if (e.target?.id === 'playerChartLimit') {
         const limit = Number(e.target.value);
         renderPlayerAttendanceChart(window.__lastAttendanceRows || [], limit);
       }
     });
 
-    async function updateAuthStatus() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        authStatus.textContent = `Signed in as ${user.email}`;
-      } else {
-        authStatus.textContent = 'Not signed in';
-      }
-    }
-
-    // Fetch & Render
+    /* ===== Data fetch ===== */
     async function fetchPlayers() {
       const { data, error } = await supabase.from('players').select('*').order('name');
       if (error) { console.error(error); return []; }
       return data || [];
     }
-
-    function byId(...ids){
-      for (const id of ids){
-        const el = document.getElementById(id);
-        if (el) return el;
-      }
-      return null;
-    }
-
-
-    // Pagination state
-    const ATT = { data: [], page: 1, pageSize: 10 };
-    const PAY = { data: [], page: 1, pageSize: 10 };
-
-    function paginate(arr, page, size) {
-      const start = (page - 1) * size;
-      return arr.slice(start, start + size);
-    }
-
-    /* ---------- ATTENDANCE ---------- */
-    function renderAttendancePaginated() {
-      const container = byId('attendanceList','attendanceTableBody','attList','attTbody'); // try your real IDs here
-      if (!container) { console.warn('Attendance container not found'); return; }
-
-      const total = ATT.data?.length || 0;
-      const pages = Math.max(1, Math.ceil(total / ATT.pageSize));
-      ATT.page = Math.min(Math.max(1, ATT.page), pages);
-
-      const pageItems = paginate(ATT.data, ATT.page, ATT.pageSize);
-
-      container.innerHTML = pageItems.map(r => `
-        <tr>
-          <td>${r.date}</td>
-          <td>${r.players?.name ?? r.player_name ?? r.player_id}</td>
-          <td>${r.slots}</td>
-        </tr>
-      `).join('');
-
-      const info = byId('attPageInfo'); if (info) info.textContent = `${ATT.page} / ${pages} (${total})`;
-      const prev = byId('attPrev'); if (prev) prev.disabled = ATT.page <= 1;
-      const next = byId('attNext'); if (next) next.disabled = ATT.page >= pages;
-    }
-
-    /* ---------- PAYMENTS ---------- */
-    function renderPaymentsPaginated() {
-      const container = byId('paymentsList','paymentsTableBody','payList','payTbody'); // try your real IDs here
-      if (!container) { console.warn('Payments container not found'); return; }
-
-      const total = PAY.data?.length || 0;
-      const pages = Math.max(1, Math.ceil(total / PAY.pageSize));
-      PAY.page = Math.min(Math.max(1, PAY.page), pages);
-
-      const pageItems = paginate(PAY.data, PAY.page, PAY.pageSize);
-
-      container.innerHTML = pageItems.map(r => `
-        <tr>
-          <td>${r.date}</td>
-          <td>${r.players?.name ?? r.player_name ?? r.player_id}</td>
-          <td>${Number(r.amount).toFixed(2)}</td>
-          <td>${r.note ?? ''}</td>
-        </tr>
-      `).join('');
-
-      const info = byId('payPageInfo'); if (info) info.textContent = `${PAY.page} / ${pages} (${total})`;
-      const prev = byId('payPrev'); if (prev) prev.disabled = PAY.page <= 1;
-      const next = byId('payNext'); if (next) next.disabled = PAY.page >= pages;
-    }
-
-
-    // Wire control events once DOM is ready
-    document.addEventListener('DOMContentLoaded', () => {
-      const attPrev = document.getElementById('attPrev');
-      const attNext = document.getElementById('attNext');
-      const attSize = document.getElementById('attPageSize');
-      if (attPrev) attPrev.onclick = () => { if (ATT.page > 1) { ATT.page--; renderAttendancePaginated(); } };
-      if (attNext) attNext.onclick = () => { ATT.page++; renderAttendancePaginated(); };
-      if (attSize) attSize.onchange = e => { ATT.pageSize = Number(e.target.value || 10); ATT.page = 1; renderAttendancePaginated(); };
-
-      const payPrev = document.getElementById('payPrev');
-      const payNext = document.getElementById('payNext');
-      const paySize = document.getElementById('payPageSize');
-      if (payPrev) payPrev.onclick = () => { if (PAY.page > 1) { PAY.page--; renderPaymentsPaginated(); } };
-      if (payNext) payNext.onclick = () => { PAY.page++; renderPaymentsPaginated(); };
-      if (paySize) paySize.onchange = e => { PAY.pageSize = Number(e.target.value || 10); PAY.page = 1; renderPaymentsPaginated(); };
-    });
-
 
     async function fetchAttendance() {
       const { data, error } = await supabase
@@ -482,43 +363,98 @@
       return data || [];
     }
 
-    function renderPlayers(players) {
-      // Re-query in case DOM changed
-      const playersList = document.getElementById('playersList'); // may be null
-      const attPlayer   = document.getElementById('attPlayer');
-      const payPlayer   = document.getElementById('payPlayer');
+    /* ===== Public pagination (Attendance/Payments only) ===== */
+    const PUB_ATT = { data: [], page: 1, pageSize: 10 };
+    const PUB_PAY = { data: [], page: 1, pageSize: 10 };
 
-      // Fill admin selects
-      const opts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-      if (attPlayer) attPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
-      if (payPlayer) payPlayer.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
-
-      // Update the public list only if it exists in the DOM
-      if (playersList) {
-        playersList.innerHTML = players
-          .map(p => `• ${p.name}${p.email ? ` <span class="text-gray-500">(${p.email})</span>` : ''}`)
-          .join('<br/>');
-      }
+    function paginate(arr, page, size) {
+      const start = (page - 1) * size;
+      return arr.slice(start, start + size);
     }
 
+    function renderPublicAttendance() {
+      const container = document.getElementById('attendanceBody');
+      if (!container) return;
 
-    function renderAttendance(rows) {
-      attendanceBody.innerHTML = rows.map(r => `
-        <tr>
+      const total = PUB_ATT.data.length;
+      const pages = Math.max(1, Math.ceil(total / PUB_ATT.pageSize));
+      PUB_ATT.page = Math.min(Math.max(1, PUB_ATT.page), pages);
+
+      const rows = paginate(PUB_ATT.data, PUB_ATT.page, PUB_ATT.pageSize);
+      container.innerHTML = rows.map(r => `
+        <tr class="border-b last:border-0">
           <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2">${r.players?.name ?? ''}</td>
+          <td class="px-3 py-2">${r.players?.name ?? r.player_id}</td>
           <td class="px-3 py-2 text-right">${r.slots}</td>
-        </tr>`).join('');
+        </tr>
+      `).join('');
+
+      const info = document.getElementById('pubAttPageInfo');
+      if (info) info.textContent = `${PUB_ATT.page} / ${pages} (${total})`;
+      document.getElementById('pubAttPrev').disabled = PUB_ATT.page <= 1;
+      document.getElementById('pubAttNext').disabled = PUB_ATT.page >= pages;
     }
 
-    function renderPayments(rows) {
-      paymentsBody.innerHTML = rows.map(r => `
-        <tr>
+    function renderPublicPayments() {
+      const container = document.getElementById('paymentsBody');
+      if (!container) return;
+
+      const total = PUB_PAY.data.length;
+      const pages = Math.max(1, Math.ceil(total / PUB_PAY.pageSize));
+      PUB_PAY.page = Math.min(Math.max(1, PUB_PAY.page), pages);
+
+      const rows = paginate(PUB_PAY.data, PUB_PAY.page, PUB_PAY.pageSize);
+      container.innerHTML = rows.map(r => `
+        <tr class="border-b last:border-0">
           <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2">${r.players?.name ?? ''}</td>
+          <td class="px-3 py-2">${r.players?.name ?? r.player_id}</td>
           <td class="px-3 py-2 text-right">$${Number(r.amount).toFixed(2)}</td>
           <td class="px-3 py-2">${r.note ?? ''}</td>
-        </tr>`).join('');
+        </tr>
+      `).join('');
+
+      const info = document.getElementById('pubPayPageInfo');
+      if (info) info.textContent = `${PUB_PAY.page} / ${pages} (${total})`;
+      document.getElementById('pubPayPrev').disabled = PUB_PAY.page <= 1;
+      document.getElementById('pubPayNext').disabled = PUB_PAY.page >= pages;
+    }
+
+    // Wire public pager controls
+    document.addEventListener('DOMContentLoaded', () => {
+      // Attendance
+      document.getElementById('pubAttPrev').onclick = () => {
+        if (PUB_ATT.page > 1) { PUB_ATT.page--; renderPublicAttendance(); }
+      };
+      document.getElementById('pubAttNext').onclick = () => {
+        PUB_ATT.page++; renderPublicAttendance();
+      };
+      document.getElementById('pubAttPageSize').onchange = (e) => {
+        PUB_ATT.pageSize = Number(e.target.value || 10);
+        PUB_ATT.page = 1;
+        renderPublicAttendance();
+      };
+
+      // Payments
+      document.getElementById('pubPayPrev').onclick = () => {
+        if (PUB_PAY.page > 1) { PUB_PAY.page--; renderPublicPayments(); }
+      };
+      document.getElementById('pubPayNext').onclick = () => {
+        PUB_PAY.page++; renderPublicPayments();
+      };
+      document.getElementById('pubPayPageSize').onchange = (e) => {
+        PUB_PAY.pageSize = Number(e.target.value || 10);
+        PUB_PAY.page = 1;
+        renderPublicPayments();
+      };
+    });
+
+    /* ===== Render helpers ===== */
+    function renderPlayers(players) {
+      const attSel = document.getElementById('attPlayer');
+      const paySel = document.getElementById('payPlayer');
+      const opts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      if (attSel) attSel.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
+      if (paySel) paySel.innerHTML = '<option value="" disabled selected>Select player</option>' + opts;
     }
 
     function renderBalances(rows) {
@@ -526,57 +462,51 @@
         const bal = Number(r.balance);
         const cls = bal > 0 ? 'text-red-600' : (bal < 0 ? 'text-emerald-700' : '');
         return `
-        <tr>
-          <td class="px-3 py-2">${r.name}</td>
-          <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
-          <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
-          <td class="px-3 py-2 text-right font-semibold ${cls}">$${bal.toFixed(2)}</td>
-        </tr>`;
+          <tr>
+            <td class="px-3 py-2">${r.name}</td>
+            <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
+            <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
+            <td class="px-3 py-2 text-right font-semibold ${cls}">$${bal.toFixed(2)}</td>
+          </tr>`;
       }).join('');
     }
 
+    /* ===== Initial load ===== */
     async function refreshAll() {
       updateAuthStatus();
       const [players, attendance, payments, balances] = await Promise.all([
         fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances()
       ]);
 
-      // Store datasets and render first pages
-      ATT.data = attendance || [];
-      PAY.data = payments || [];
-
-      // Keep players fetch if Admin selects rely on it
       renderPlayers(players);
-      //renderAttendance(attendance);
-      //renderPayments(payments);
-      renderAttendancePaginated();
-      renderPaymentsPaginated();
       renderBalances(balances);
 
-      window.__lastAttendanceRows = attendance; // for the limit dropdown
+      // public datasets + first render
+      PUB_ATT.data = attendance || [];
+      PUB_PAY.data = payments  || [];
+      renderPublicAttendance();
+      renderPublicPayments();
 
+      // chart
+      window.__lastAttendanceRows = attendance;
       const limitSel = document.getElementById('playerChartLimit');
       const limit = limitSel ? Number(limitSel.value) : 10;
       renderPlayerAttendanceChart(attendance, limit);
     }
-    
-    document.addEventListener('DOMContentLoaded', () => {
-      const attPrev = byId('attPrev'); if (attPrev) attPrev.onclick = () => { if (ATT.page > 1) { ATT.page--; renderAttendancePaginated(); } };
-      const attNext = byId('attNext'); if (attNext) attNext.onclick = () => { ATT.page++; renderAttendancePaginated(); };
-      const attSize = byId('attPageSize'); if (attSize) attSize.onchange = e => { ATT.pageSize = Number(e.target.value||10); ATT.page = 1; renderAttendancePaginated(); };
 
-      const payPrev = byId('payPrev'); if (payPrev) payPrev.onclick = () => { if (PAY.page > 1) { PAY.page--; renderPaymentsPaginated(); } };
-      const payNext = byId('payNext'); if (payNext) payNext.onclick = () => { PAY.page++; renderPaymentsPaginated(); };
-      const paySize = byId('payPageSize'); if (paySize) paySize.onchange = e => { PAY.pageSize = Number(e.target.value||10); PAY.page = 1; renderPaymentsPaginated(); };
-    });
-
-    // Forms
+    // Forms (Admin)
     document.getElementById('playerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = new FormData(e.target);
-      const payload = { name: form.get('name').trim(), email: (form.get('email')||'').trim() || null };
+      const payload = {
+        name: form.get('name'),
+        email: form.get('email') || null,
+        is_active: true
+      };
       const { error } = await supabase.from('players').insert(payload);
-      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+      if (error) alert(error.message);
+      e.target.reset();
+      refreshAll();
     });
 
     document.getElementById('expenseForm').addEventListener('submit', async (e) => {
@@ -585,10 +515,12 @@
       const payload = {
         date: form.get('date'),
         amount: Number(form.get('amount')),
-        description: (form.get('description')||'').trim() || null
+        description: form.get('description') || null
       };
       const { error } = await supabase.from('expenses').insert(payload);
-      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+      if (error) alert(error.message);
+      e.target.reset();
+      refreshAll();
     });
 
     document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
@@ -599,10 +531,11 @@
         player_id: form.get('player_id'),
         slots: Number(form.get('slots'))
       };
-      // Upsert by (date, player_id) uniqueness
-      const { error } = await supabase.from('attendance')
-        .upsert(payload, { onConflict: 'date,player_id' });
-      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+      // upsert by (date, player_id)
+      const { error } = await supabase.from('attendance').upsert(payload, { onConflict: 'date,player_id' });
+      if (error) alert(error.message);
+      e.target.reset();
+      refreshAll();
     });
 
     document.getElementById('paymentForm').addEventListener('submit', async (e) => {
@@ -612,29 +545,15 @@
         date: form.get('date'),
         player_id: form.get('player_id'),
         amount: Number(form.get('amount')),
-        note: (form.get('note')||'').trim() || null
+        note: form.get('note') || null
       };
       const { error } = await supabase.from('payments').insert(payload);
-      if (error) alert(error.message); else { e.target.reset(); refreshAll(); }
+      if (error) alert(error.message);
+      e.target.reset();
+      refreshAll();
     });
 
-    // Initial load + auth state listener
-    supabase.auth.onAuthStateChange((_ev, _session) => {
-      updateAuthStatus();
-    });
-
-    // Keep this listener (it already exists in your file)
-    supabase.auth.onAuthStateChange((_ev, _session) => {
-      updateAuthStatus();
-    });
-
-    // Make sure any magic-link code in the URL is exchanged for a session
-    (async () => {
-      await supabase.auth.getSession();  // processes ?code=... if present
-      await refreshAll();
-    })();
-
-
+    // Boot
     refreshAll();
   </script>
 </body>
