@@ -322,14 +322,24 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 
   <script type="module">
-    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
     // === CONFIG: Replace with your Supabase project details ===
     const SUPABASE_URL = "https://ioxtxbgqaognzxscgkly.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveHR4YmdxYW9nbnp4c2Nna2x5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTgxMDksImV4cCI6MjA3NTczNDEwOX0.oIST2TVUJbg4H0PziuNdLBcSHFERkkM2M29bHpsYE-E";
-
+    
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error("Supabase URL/key missing");
+    }
     // Init Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true, // needed for magic-link callback
+      },
+    });
+    window.supabase = supabase;
     // MUST match Supabase Auth → URL Configuration → (Site URL + Redirect URL)
     const SITE_URL = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/"; // keep the trailing slash
     /* ===== Init ===== */
