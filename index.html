@@ -751,13 +751,21 @@
     function renderBalances(rows) {
       balancesBody.innerHTML = rows.map(r => {
         const bal = Number(r.balance);
-        const cls = bal > 0 ? 'text-red-600' : (bal < 0 ? 'text-emerald-700' : '');
+        const cls =
+          bal < 0 ? 'text-red-600' :        // owes money
+          bal > 0 ? 'text-emerald-700' :    // has credit
+          'text-gray-500';                  // settled
+
+        const sign = bal > 0 ? '+' : '';    // optional + sign
+
         return `
-          <tr>
+          <tr class="border-b last:border-0">
             <td class="px-3 py-2">${r.name}</td>
             <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
             <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
-            <td class="px-3 py-2 text-right font-semibold ${cls}">$${bal.toFixed(2)}</td>
+            <td class="px-3 py-2 text-right font-semibold ${cls}">
+              ${sign}$${bal.toFixed(2)}
+            </td>
           </tr>`;
       }).join('');
     }
