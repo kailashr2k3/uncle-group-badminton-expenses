@@ -751,13 +751,22 @@
     function renderBalances(rows) {
       balancesBody.innerHTML = rows.map(r => {
         const bal = Number(r.balance);
-        const cls = bal > 0 ? 'text-red-600' : (bal < 0 ? 'text-emerald-700' : '');
+        const owes = bal > 0;
+
+        const cls = owes ? 'text-red-600'
+                  : (bal < 0 ? 'text-emerald-700' : 'text-gray-600');
+
+        const displayBal = owes ? bal : Math.abs(bal);
+        const prefix = bal === 0 ? '' : (owes ? '-' : '+');
+
         return `
           <tr>
             <td class="px-3 py-2">${r.name}</td>
             <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
             <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
-            <td class="px-3 py-2 text-right font-semibold ${cls}">$${bal.toFixed(2)}</td>
+            <td class="px-3 py-2 text-right font-semibold ${cls}">
+              ${bal === 0 ? '$0.00' : `${prefix}$${displayBal.toFixed(2)}`}
+            </td>
           </tr>`;
       }).join('');
     }
