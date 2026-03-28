@@ -423,20 +423,6 @@
       return data || [];
     }
 
-    async function fetchExpenses() {
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('id,date,amount,description')
-        .order('date', { ascending: false })
-        .limit(10);
-
-      if (error) {
-        console.error(error);
-        return [];
-      }
-      return data || [];
-    }
-
     async function updateAuthStatus() {
       const { data: { user } } = await supabase.auth.getUser();
       authStatus.textContent = user ? `Signed in as ${user.email}` : 'Not signed in';
