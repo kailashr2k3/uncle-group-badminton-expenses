@@ -821,7 +821,7 @@
     /* ===== Initial load ===== */
     async function refreshAll() {
       updateAuthStatus();
-      const [players, attendance, payments, balances] = await Promise.all([
+      const [players, attendance, payments, balances, expenses] = await Promise.all([
         fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances(), fetchExpenses()
       ]);
 
