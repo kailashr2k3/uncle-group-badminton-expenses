@@ -147,10 +147,26 @@
         </div>
       </div>
 
-        <!-- Recent Split Ledger -->
+      <!-- Recent Split Ledger -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Recent Payment Split</h2>
+          <div class="flex items-center gap-3">
+            <div class="space-x-2">
+              <button id="splitPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="splitPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="splitNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="splitPageSize" class="border rounded px-2 py-1">
+                <option>5</option>
+                <option selected>10</option>
+                <option>20</option>
+                <option>50</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <div class="overflow-x-auto">
@@ -542,7 +558,7 @@
         .from('session_split_view')
         .select('*')
         .order('date', { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (error) {
         console.error(error);
@@ -619,19 +635,41 @@
       return data || [];
     }
 
-    function renderSessionSplits(rows) {
+    function renderSessionSplits() {
       const body = document.getElementById('splitBody');
       if (!body) return;
 
-      body.innerHTML = rows.map(r => `
-        <tr class="border-b last:border-0">
-          <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2">${r.player_name}</td>
-          <td class="px-3 py-2 text-right">${r.slots}</td>
-          <td class="px-3 py-2 text-right text-red-600">-$${Number(r.split_amount).toFixed(2)}</td>
-          <td class="px-3 py-2">${r.description ?? ''}</td>
-        </tr>
-      `).join('');
+      const total = SPLIT.data.length;
+      const pages = Math.max(1, Math.ceil(total / SPLIT.pageSize));
+      SPLIT.page = Math.min(Math.max(1, SPLIT.page), pages);
+
+      const rows = paginate(SPLIT.data, SPLIT.page, SPLIT.pageSize);
+
+      if (!rows.length) {
+        body.innerHTML = `
+          <tr>
+            <td colspan="5" class="px-3 py-2 text-gray-500">No split records found.</td>
+          </tr>
+        `;
+      } else {
+        body.innerHTML = rows.map(r => `
+          <tr class="border-b last:border-0">
+            <td class="px-3 py-2">${r.date}</td>
+            <td class="px-3 py-2">${r.player_name}</td>
+            <td class="px-3 py-2 text-right">${r.slots}</td>
+            <td class="px-3 py-2 text-right text-red-600">-$${Number(r.split_amount).toFixed(2)}</td>
+            <td class="px-3 py-2">${r.description ?? ''}</td>
+          </tr>
+        `).join('');
+      }
+
+      const info = document.getElementById('splitPageInfo');
+      if (info) info.textContent = `${SPLIT.page} / ${pages} (${total})`;
+
+      const prev = document.getElementById('splitPrev');
+      const next = document.getElementById('splitNext');
+      if (prev) prev.disabled = SPLIT.page <= 1;
+      if (next) next.disabled = SPLIT.page >= pages;
     }
 
     function renderPlayerErrorStats(dateStr, rows) {
@@ -742,6 +780,7 @@
     /* ===== Public pagination (Attendance/Payments only) ===== */
     const PUB_ATT = { data: [], page: 1, pageSize: 10 };
     const PUB_PAY = { data: [], page: 1, pageSize: 10 };
+    const SPLIT = { data: [], page: 1, pageSize: 10 };
 
     function paginate(arr, page, size) {
       const start = (page - 1) * size;
@@ -822,6 +861,25 @@
         PUB_PAY.page = 1;
         renderPublicPayments();
       };
+
+      // Split ledger
+      document.getElementById('splitPrev').onclick = () => {
+        if (SPLIT.page > 1) {
+          SPLIT.page--;
+          renderSessionSplits();
+        }
+      };
+
+      document.getElementById('splitNext').onclick = () => {
+        SPLIT.page++;
+        renderSessionSplits();
+      };
+
+      document.getElementById('splitPageSize').onchange = (e) => {
+        SPLIT.pageSize = Number(e.target.value || 10);
+        SPLIT.page = 1;
+        renderSessionSplits();
+      };
     });
 
     /* ===== Render helpers ===== */
@@ -873,21 +931,26 @@
     async function refreshAll() {
       updateAuthStatus();
       const [players, attendance, payments, balances, expenses, splits] = await Promise.all([
-        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances(), fetchExpenses(), fetchSessionSplits()
+        fetchPlayers(),
+        fetchAttendance(),
+        fetchPayments(),
+        fetchBalances(),
+        fetchExpenses(),
+        fetchSessionSplits()
       ]);
 
       renderPlayers(players);
       renderBalances(balances);
       renderExpenses(expenses);
-      renderSessionSplits(splits);
 
-      // public datasets + first render
+      SPLIT.data = splits || [];
+      renderSessionSplits();
+
       PUB_ATT.data = attendance || [];
-      PUB_PAY.data = payments  || [];
+      PUB_PAY.data = payments || [];
       renderPublicAttendance();
       renderPublicPayments();
 
-      // chart
       window.__lastAttendanceRows = attendance;
       const limitSel = document.getElementById('playerChartLimit');
       const limit = limitSel ? Number(limitSel.value) : 10;
