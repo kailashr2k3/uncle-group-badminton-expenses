@@ -147,6 +147,28 @@
         </div>
       </div>
 
+        <!-- Recent Split Ledger -->
+      <div class="bg-white rounded-2xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Recent Payment Split</h2>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Date</th>
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-right px-3 py-2">Slots</th>
+                <th class="text-right px-3 py-2">Split</th>
+                <th class="text-left px-3 py-2">Description</th>
+              </tr>
+            </thead>
+            <tbody id="splitBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Matches by Session -->
       <div class="hidden bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
         <div class="flex items-center justify-between mb-3">
@@ -515,6 +537,20 @@
       return data || [];
     }
 
+    async function fetchSessionSplits() {
+      const { data, error } = await supabase
+        .from('session_split_view')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error(error);
+        return [];
+      }
+      return data || [];
+    }
+
     async function fetchAttendance() {
       const { data, error } = await supabase
         .from('attendance')
@@ -581,6 +617,21 @@
         .order('player_name', { ascending: true });
       if (error) { console.error(error); return []; }
       return data || [];
+    }
+
+    function renderSessionSplits(rows) {
+      const body = document.getElementById('splitBody');
+      if (!body) return;
+
+      body.innerHTML = rows.map(r => `
+        <tr class="border-b last:border-0">
+          <td class="px-3 py-2">${r.date}</td>
+          <td class="px-3 py-2">${r.player_name}</td>
+          <td class="px-3 py-2 text-right">${r.slots}</td>
+          <td class="px-3 py-2 text-right text-red-600">-$${Number(r.split_amount).toFixed(2)}</td>
+          <td class="px-3 py-2">${r.description ?? ''}</td>
+        </tr>
+      `).join('');
     }
 
     function renderPlayerErrorStats(dateStr, rows) {
@@ -821,13 +872,14 @@
     /* ===== Initial load ===== */
     async function refreshAll() {
       updateAuthStatus();
-      const [players, attendance, payments, balances, expenses] = await Promise.all([
-        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances(), fetchExpenses()
+      const [players, attendance, payments, balances, expenses, splits] = await Promise.all([
+        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances(), fetchExpenses(), fetchSessionSplits()
       ]);
 
       renderPlayers(players);
       renderBalances(balances);
       renderExpenses(expenses);
+      fetchSessionSplits();
 
       // public datasets + first render
       PUB_ATT.data = attendance || [];
