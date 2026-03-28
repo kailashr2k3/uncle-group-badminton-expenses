@@ -35,29 +35,42 @@
         </div>
       </div>
 
-      <!-- Per-Player Total Attendance (Chart) -->
+      <!-- Recent Split Ledger -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
-          <select id="playerChartLimit" class="border rounded px-2 py-1 text-sm">
-            <option value="10" selected>Top 10</option>
-            <option value="20">Top 20</option>
-            <option value="50">Top 50</option>
-            <option value="0">All</option>
-          </select>
+          <h2 class="text-lg font-semibold">Recent Payment Split</h2>
+          <div class="flex items-center gap-3">
+            <div class="space-x-2">
+              <button id="splitPrev" class="px-2 py-1 border rounded">Prev</button>
+              <span id="splitPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
+              <button id="splitNext" class="px-2 py-1 border rounded">Next</button>
+            </div>
+            <label class="text-sm text-gray-600">
+              Page size
+              <select id="splitPageSize" class="border rounded px-2 py-1">
+                <option>5</option>
+                <option selected>10</option>
+                <option>20</option>
+                <option>50</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div id="playerChartWrapper" style="max-height: 620px; overflow:auto;">
-          <canvas id="playerAttendanceChart"></canvas>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Date</th>
+                <th class="text-left px-3 py-2">Player</th>
+                <th class="text-right px-3 py-2">Slots</th>
+                <th class="text-right px-3 py-2">Split</th>
+                <th class="text-left px-3 py-2">Description</th>
+              </tr>
+            </thead>
+            <tbody id="splitBody"></tbody>
+          </table>
         </div>
-
-        <p id="playerChartEmpty" class="text-sm text-gray-500 hidden">
-          No attendance yet. Add some sessions in Admin → Attendance.
-        </p>
-
-        <p class="text-xs text-gray-500 mt-2">
-          Totals include <em>slots</em> (so +2 guests count as 2).
-        </p>
       </div>
 
       <!-- Attendance (PUBLIC) -->
@@ -147,43 +160,32 @@
         </div>
       </div>
 
-      <!-- Recent Split Ledger -->
+      <!-- Per-Player Total Attendance (Chart) -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Recent Payment Split</h2>
-          <div class="flex items-center gap-3">
-            <div class="space-x-2">
-              <button id="splitPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="splitPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="splitNext" class="px-2 py-1 border rounded">Next</button>
-            </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="splitPageSize" class="border rounded px-2 py-1">
-                <option>5</option>
-                <option selected>10</option>
-                <option>20</option>
-                <option>50</option>
-              </select>
-            </label>
-          </div>
+          <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
+          <select id="playerChartLimit" class="border rounded px-2 py-1 text-sm">
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+            <option value="0">All</option>
+          </select>
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Date</th>
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-right px-3 py-2">Slots</th>
-                <th class="text-right px-3 py-2">Split</th>
-                <th class="text-left px-3 py-2">Description</th>
-              </tr>
-            </thead>
-            <tbody id="splitBody"></tbody>
-          </table>
+        <div id="playerChartWrapper" style="max-height: 620px; overflow:auto;">
+          <canvas id="playerAttendanceChart"></canvas>
         </div>
+
+        <p id="playerChartEmpty" class="text-sm text-gray-500 hidden">
+          No attendance yet. Add some sessions in Admin → Attendance.
+        </p>
+
+        <p class="text-xs text-gray-500 mt-2">
+          Totals include <em>slots</em> (so +2 guests count as 2).
+        </p>
       </div>
+
+      
 
       <!-- Matches by Session -->
       <div class="hidden bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
