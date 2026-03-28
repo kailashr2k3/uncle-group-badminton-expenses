@@ -61,7 +61,7 @@
       </div>
 
       <!-- Attendance (PUBLIC) -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+      <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Attendance</h2>
           <div class="flex items-center gap-3">
@@ -94,7 +94,7 @@
       </div>
 
       <!-- Payments (PUBLIC) -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+      <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Payments</h2>
           <div class="flex items-center gap-3">
@@ -127,8 +127,28 @@
         </div>
       </div>
 
+      <!-- Recent Expenses -->
+      <div class="bg-white rounded-2xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Recent Expenses</h2>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm" id="expensesTable">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="text-left px-3 py-2">Date</th>
+                <th class="text-right px-3 py-2">Amount</th>
+                <th class="text-left px-3 py-2">Description</th>
+              </tr>
+            </thead>
+            <tbody id="expensesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Matches by Session -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
+      <div class="hidden bg-white rounded-2xl shadow p-4 md:col-span-2 mt-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Matches (by Session)</h2>
           <div class="flex items-center gap-2">
@@ -142,7 +162,7 @@
       </div>
 
       <!-- Player Error Stats (for selected date) -->
-      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+      <div class="hidden bg-white rounded-2xl shadow p-4 md:col-span-2">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Player Error Stats</h2>
           <div class="text-sm text-gray-500" id="pubStatsDateLabel"></div>
@@ -387,6 +407,34 @@
       });
       if (error) alert(error.message);
       else alert("Magic link sent! Check your inbox.");
+    }
+
+    async function fetchExpenses() {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('id,date,amount,description')
+        .order('date', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error(error);
+        return [];
+      }
+      return data || [];
+    }
+
+    async function fetchExpenses() {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('id,date,amount,description')
+        .order('date', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error(error);
+        return [];
+      }
+      return data || [];
     }
 
     async function updateAuthStatus() {
@@ -775,11 +823,12 @@
     async function refreshAll() {
       updateAuthStatus();
       const [players, attendance, payments, balances] = await Promise.all([
-        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances()
+        fetchPlayers(), fetchAttendance(), fetchPayments(), fetchBalances(), fetchExpenses()
       ]);
 
       renderPlayers(players);
       renderBalances(balances);
+      renderexpenses(expenses);
 
       // public datasets + first render
       PUB_ATT.data = attendance || [];
