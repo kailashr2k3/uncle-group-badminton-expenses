@@ -6,6 +6,44 @@
   <title>Sports Expenses</title>
   <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* balance tabs */
+    .bal-tab-active { background:#1e40af; color:#fff; border-color:#1e40af; }
+    /* player row card */
+    .player-row { display:flex; align-items:center; gap:12px; padding:10px 12px; background:#fff; border:0.5px solid #e5e7eb; border-radius:12px; cursor:pointer; transition:box-shadow .15s, border-color .15s; }
+    .player-row:hover { box-shadow:0 2px 8px rgba(0,0,0,.07); border-color:#d1d5db; }
+    .player-row.dim { opacity:0.5; }
+    .av { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex-shrink:0; }
+    .av-red  { background:#FCEBEB; color:#A32D2D; }
+    .av-grn  { background:#EAF3DE; color:#3B6D11; }
+    .av-gry  { background:#f3f4f6; color:#6b7280; }
+    .av-blu  { background:#E6F1FB; color:#185FA5; }
+    .pr-bar-bg { height:3px; background:#e5e7eb; border-radius:2px; overflow:hidden; margin-top:4px; }
+    .pr-bar-fill { height:3px; border-radius:2px; }
+    /* session tabs */
+    .sess-tab-active { background:#1e40af; color:#fff; border-color:#1e40af; }
+    /* expense session card */
+    .exp-card { background:#fff; border:0.5px solid #e5e7eb; border-radius:12px; padding:12px; }
+    .exp-dot-row { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+    .exp-dot { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; }
+    /* drawer */
+    #playerDrawer { display:none; position:fixed; inset:0; z-index:50; }
+    #playerDrawer.open { display:flex; }
+    #drawerBackdrop { position:absolute; inset:0; background:rgba(0,0,0,.35); }
+    #drawerPanel { position:absolute; right:0; top:0; bottom:0; width:100%; max-width:440px; background:#fff; overflow:hidden; box-shadow:-4px 0 24px rgba(0,0,0,.1); display:flex; flex-direction:column; }
+    .dtab-pane { flex:1; overflow-y:auto; padding:16px 20px; }
+    .dtab-btn { font-size:13px; padding:10px 14px 10px 0; border-bottom:2px solid transparent; color:#6b7280; cursor:pointer; white-space:nowrap; }
+    .dtab-btn.dtab-active { border-color:#1e40af; color:#1e40af; font-weight:500; }
+    /* split session collapsible */
+    .split-session summary::-webkit-details-marker { display:none; }
+    .split-session[open] .split-chevron { transform:rotate(0deg); }
+    .split-session:not([open]) .split-chevron { transform:rotate(-90deg); }
+    /* timeline in overview pane */
+    .tl-row { display:flex; align-items:flex-start; gap:10px; padding:7px 0; border-bottom:0.5px solid #f3f4f6; }
+    .tl-row:last-child { border:none; }
+    .tl-dot { width:8px; height:8px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+    @media(max-width:500px){ #drawerPanel{ max-width:100%; } }
+  </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div class="max-w-6xl mx-auto p-4 sm:p-6">
@@ -18,171 +56,70 @@
 
     <section class="grid md:grid-cols-2 gap-6">
       <!-- Balances -->
-      <div class="bg-white rounded-2xl shadow p-4">
-        <h2 class="text-lg font-semibold mb-3">Balances</h2>
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm" id="balancesTable">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-right px-3 py-2">Owed</th>
-                <th class="text-right px-3 py-2">Paid</th>
-                <th class="text-right px-3 py-2">Balance</th>
-              </tr>
-            </thead>
-            <tbody id="balancesBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Recent Split Ledger -->
-      <div class="bg-white rounded-2xl shadow p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Recent Payment Split</h2>
-          <div class="flex items-center gap-3">
-            <div class="space-x-2">
-              <button id="splitPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="splitPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="splitNext" class="px-2 py-1 border rounded">Next</button>
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-semibold">Balances</h2>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Filter tabs -->
+            <div class="flex gap-1" id="balFilterTabs">
+              <button data-filter="all"      class="bal-tab bal-tab-active text-xs px-3 py-1 rounded-full border">All</button>
+              <button data-filter="owes"     class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Owes</button>
+              <button data-filter="credit"   class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Credit</button>
+              <button data-filter="settled"  class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Settled</button>
             </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="splitPageSize" class="border rounded px-2 py-1">
-                <option>5</option>
-                <option selected>10</option>
-                <option>20</option>
-                <option>50</option>
-              </select>
-            </label>
+            <!-- Sort -->
+            <select id="balSort" class="text-xs border rounded-full px-3 py-1 text-gray-600 bg-white">
+              <option value="debt">Biggest debt first</option>
+              <option value="credit">Biggest credit first</option>
+              <option value="alpha">A → Z</option>
+            </select>
           </div>
         </div>
-
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Date</th>
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-right px-3 py-2">Slots</th>
-                <th class="text-right px-3 py-2">Split</th>
-                <th class="text-left px-3 py-2">Description</th>
-              </tr>
-            </thead>
-            <tbody id="splitBody"></tbody>
-          </table>
-        </div>
+        <!-- Summary strip -->
+        <div class="flex flex-wrap gap-3 mb-4" id="balSummaryStrip"></div>
+        <!-- Card grid -->
+        <div id="balancesBody" class="flex flex-col gap-2"></div>
       </div>
 
-      <!-- Attendance (PUBLIC) -->
-      <div class="bg-white rounded-2xl shadow p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Attendance</h2>
-          <div class="flex items-center gap-3">
-            <div class="space-x-2">
-              <button id="pubAttPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="pubAttPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="pubAttNext" class="px-2 py-1 border rounded">Next</button>
-            </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="pubAttPageSize" class="border rounded px-2 py-1">
-                <option>5</option><option selected>10</option><option>20</option><option>50</option>
-              </select>
-            </label>
+      <!-- Sessions: split timeline + attendance grid side by side -->
+      <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-semibold">Sessions</h2>
+          <div class="flex gap-1" id="sessTabBar">
+            <button data-tab="split" class="sess-tab sess-tab-active text-xs px-3 py-1 rounded-full border">Payment split</button>
+            <button data-tab="att"   class="sess-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Attendance</button>
           </div>
         </div>
-
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm" id="attendanceTable">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Date</th>
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-right px-3 py-2">Slots (+1/+2)</th>
-              </tr>
-            </thead>
-            <tbody id="attendanceBody"></tbody>
-          </table>
+        <div id="sessPane-split">
+          <div id="splitTimelineBody"><p class="text-sm text-gray-400">Loading…</p></div>
+        </div>
+        <div id="sessPane-att" class="hidden">
+          <div id="attGridBody"><p class="text-sm text-gray-400">Loading…</p></div>
         </div>
       </div>
 
-      <!-- Payments (PUBLIC) -->
+      <!-- Expenses timeline + Attendance leaderboard side by side on desktop -->
       <div class="bg-white rounded-2xl shadow p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Payments</h2>
-          <div class="flex items-center gap-3">
-            <div class="space-x-2">
-              <button id="pubPayPrev" class="px-2 py-1 border rounded">Prev</button>
-              <span id="pubPayPageInfo" class="text-sm text-gray-600">1 / 1 (0)</span>
-              <button id="pubPayNext" class="px-2 py-1 border rounded">Next</button>
-            </div>
-            <label class="text-sm text-gray-600">
-              Page size
-              <select id="pubPayPageSize" class="border rounded px-2 py-1">
-                <option>5</option><option selected>10</option><option>20</option><option>50</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm" id="paymentsTable">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Date</th>
-                <th class="text-left px-3 py-2">Player</th>
-                <th class="text-right px-3 py-2">Amount</th>
-                <th class="text-left px-3 py-2">Note</th>
-              </tr>
-            </thead>
-            <tbody id="paymentsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Recent Expenses -->
-      <div class="bg-white rounded-2xl shadow p-4">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-1">
           <h2 class="text-lg font-semibold">Recent Expenses</h2>
+          <div id="expTotalStrip" class="text-xs text-gray-400"></div>
         </div>
-
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm" id="expensesTable">
-            <thead>
-              <tr class="bg-gray-100">
-                <th class="text-left px-3 py-2">Date</th>
-                <th class="text-right px-3 py-2">Amount</th>
-                <th class="text-left px-3 py-2">Description</th>
-              </tr>
-            </thead>
-            <tbody id="expensesBody"></tbody>
-          </table>
-        </div>
+        <p class="text-xs text-gray-400 mb-3">Tap a player dot to open their breakdown</p>
+        <div id="expensesBody"><p class="text-sm text-gray-400 py-2">No expenses yet.</p></div>
       </div>
 
-      <!-- Per-Player Total Attendance (Chart) -->
+      <!-- Attendance leaderboard -->
       <div class="bg-white rounded-2xl shadow p-4">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Total Attendance by Player</h2>
-          <select id="playerChartLimit" class="border rounded px-2 py-1 text-sm">
+          <h2 class="text-lg font-semibold">Attendance Totals</h2>
+          <select id="attLeaderLimit" class="border rounded px-2 py-1 text-sm">
             <option value="10" selected>Top 10</option>
             <option value="20">Top 20</option>
-            <option value="50">Top 50</option>
             <option value="0">All</option>
           </select>
         </div>
-
-        <div id="playerChartWrapper" style="max-height: 620px; overflow:auto;">
-          <canvas id="playerAttendanceChart"></canvas>
-        </div>
-
-        <p id="playerChartEmpty" class="text-sm text-gray-500 hidden">
-          No attendance yet. Add some sessions in Admin → Attendance.
-        </p>
-
-        <p class="text-xs text-gray-500 mt-2">
-          Totals include <em>slots</em> (so +2 guests count as 2).
-        </p>
+        <div id="attLeaderBody"><p class="text-sm text-gray-400">No attendance data yet.</p></div>
+        <p class="text-xs text-gray-400 mt-3">Slots count — a +2 guest adds 2.</p>
       </div>
 
     </section>
@@ -246,9 +183,6 @@
     <footer class="text-xs text-gray-500 mt-8">Built with Supabase + Tailwind. Static hosting friendly.</footer>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
@@ -270,9 +204,6 @@
     const SITE_URL = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/";
 
     /* ===== UI handles ===== */
-    const balancesBody = document.getElementById('balancesBody');
-    const attendanceBody = document.getElementById('attendanceBody');
-    const paymentsBody = document.getElementById('paymentsBody');
     const adminPanel = document.getElementById('adminPanel');
     const adminToggle = document.getElementById('adminToggle');
     const authStatus = document.getElementById('authStatus');
@@ -328,8 +259,35 @@
       authStatus.textContent = user ? `Signed in as ${user.email}` : 'Not signed in';
     }
 
-    /* ===== Chart helpers ===== */
-    let playerAttendanceChart;
+    /* ===== Attendance leaderboard (inline bars) ===== */
+    function renderAttendanceLeaderboard(rows, limit) {
+      const data = groupAttendanceByPlayer(rows);
+      const limited = (limit && limit > 0) ? data.slice(0, limit) : data;
+      const container = document.getElementById('attLeaderBody');
+      if (!container) return;
+      if (!limited.length) {
+        container.innerHTML = '<p class="text-sm text-gray-400">No attendance data yet.</p>';
+        return;
+      }
+      const max = limited[0][1];
+      container.innerHTML = limited.map(([name, total], i) => {
+        const pct = max > 0 ? Math.round((total / max) * 100) : 0;
+        const rank = i + 1;
+        const rankCls = rank === 1 ? 'text-amber-500 font-semibold'
+                      : rank === 2 ? 'text-gray-400 font-semibold'
+                      : rank === 3 ? 'text-orange-400 font-semibold'
+                      : 'text-gray-300';
+        return `
+          <div class="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+            <span class="text-xs w-5 text-right ${rankCls}">${rank}</span>
+            <span class="text-sm font-medium w-24 truncate">${name}</span>
+            <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-2 rounded-full bg-blue-500" style="width:${pct}%"></div>
+            </div>
+            <span class="text-sm font-semibold text-gray-700 w-8 text-right">${total}</span>
+          </div>`;
+      }).join('');
+    }
 
     function groupAttendanceByPlayer(rows) {
       const map = new Map();
@@ -341,73 +299,12 @@
       return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     }
 
-    function renderPlayerAttendanceChart(rows, limit = 10) {
-      const canvas = document.getElementById('playerAttendanceChart');
-      const wrapper = document.getElementById('playerChartWrapper');
-      const emptyMsg = document.getElementById('playerChartEmpty');
-      if (!canvas || !wrapper || !emptyMsg) return;
-
-      let data = groupAttendanceByPlayer(rows);
-
-      if (!data.length) {
-        wrapper.classList.add('hidden');
-        emptyMsg.classList.remove('hidden');
-        if (playerAttendanceChart) { playerAttendanceChart.destroy(); playerAttendanceChart = null; }
-        return;
-      } else {
-        wrapper.classList.remove('hidden');
-        emptyMsg.classList.add('hidden');
-      }
-
-      if (limit && limit > 0) data = data.slice(0, limit);
-
-      const labels = data.map(([name]) => name);
-      const values = data.map(([, total]) => total);
-
-      const perBar = 28, minH = 240, maxH = 700;
-      canvas.height = Math.max(minH, Math.min(maxH, labels.length * perBar));
-
-      if (playerAttendanceChart) playerAttendanceChart.destroy();
-
-      playerAttendanceChart = new Chart(canvas, {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Total attendance (slots)', data: values }] },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          indexAxis: 'y',
-          scales: {
-            x: { beginAtZero: true, title: { display: true, text: 'Slots' } },
-            y: { ticks: { autoSkip: false } }
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: { mode: 'nearest', intersect: false },
-            datalabels: {
-              anchor: 'end',
-              align: 'right',
-              color: '#111',
-              font: { weight: 'bold' },
-              formatter: (value, context) => {
-                const name = context.chart.data.labels[context.dataIndex];
-                return `${name}: ${value}`;
-              },
-              clip: false
-            }
-          },
-          layout: { padding: { right: 8 } }
-        },
-        plugins: [ChartDataLabels]
-      });
-    }
-
     document.addEventListener('change', (e) => {
-      if (e.target?.id === 'playerChartLimit') {
+      if (e.target?.id === 'attLeaderLimit') {
         const limit = Number(e.target.value);
-        renderPlayerAttendanceChart(window.__lastAttendanceRows || [], limit);
+        renderAttendanceLeaderboard(window.__lastAttendanceRows || [], limit);
       }
     });
-
     /* ===== Data fetch ===== */
     async function fetchPlayers() {
       const { data, error } = await supabase.from('players').select('*').order('name');
@@ -420,7 +317,7 @@
         .from('session_split_view')
         .select('*')
         .order('date', { ascending: false })
-        .limit(50);
+        .limit(500);
       if (error) { console.error(error); return []; }
       return data || [];
     }
@@ -453,139 +350,130 @@
     }
 
     function renderSessionSplits() {
-      const body = document.getElementById('splitBody');
+      const body = document.getElementById('splitTimelineBody');
       if (!body) return;
-
-      const total = SPLIT.data.length;
-      const pages = Math.max(1, Math.ceil(total / SPLIT.pageSize));
-      SPLIT.page = Math.min(Math.max(1, SPLIT.page), pages);
-
-      const rows = paginate(SPLIT.data, SPLIT.page, SPLIT.pageSize);
-
+      const rows = SPLIT.data;
       if (!rows.length) {
-        body.innerHTML = `
-          <tr>
-            <td colspan="5" class="px-3 py-2 text-gray-500">No split records found.</td>
-          </tr>
-        `;
-      } else {
-        body.innerHTML = rows.map(r => `
-          <tr class="border-b last:border-0">
-            <td class="px-3 py-2">${r.date}</td>
-            <td class="px-3 py-2">${r.player_name}</td>
-            <td class="px-3 py-2 text-right">${r.slots}</td>
-            <td class="px-3 py-2 text-right text-red-600">-$${Number(r.split_amount).toFixed(2)}</td>
-            <td class="px-3 py-2">${r.description ?? ''}</td>
-          </tr>
-        `).join('');
+        body.innerHTML = '<p class="text-sm text-gray-400 py-2">No split records yet.</p>';
+        return;
       }
+      /* group by date */
+      const byDate = new Map();
+      for (const r of rows) {
+        if (!byDate.has(r.date)) byDate.set(r.date, []);
+        byDate.get(r.date).push(r);
+      }
+      const avColors = ['#E6F1FB:#185FA5','#EAF3DE:#3B6D11','#FCEBEB:#A32D2D','#f3f4f6:#6b7280','#FAEEDA:#633806'];
+      body.innerHTML = [...byDate.entries()].map(([date, items]) => {
+        const dayTotal    = items.reduce((s,r) => s + Number(r.split_amount), 0);
+        const desc        = items[0]?.description || 'Session';
+        const playerCount = new Set(items.map(r => r.player_name)).size;
 
-      const info = document.getElementById('splitPageInfo');
-      if (info) info.textContent = `${SPLIT.page} / ${pages} (${total})`;
+        /* stable colour per player within this session */
+        const playerIdx = new Map();
+        items.forEach(r => { if (!playerIdx.has(r.player_name)) playerIdx.set(r.player_name, playerIdx.size); });
 
-      const prev = document.getElementById('splitPrev');
-      const next = document.getElementById('splitNext');
-      if (prev) prev.disabled = SPLIT.page <= 1;
-      if (next) next.disabled = SPLIT.page >= pages;
+        /* mini avatar stack for the summary row (up to 5) */
+        const uniquePlayers = [...playerIdx.keys()];
+        const avatarStack = uniquePlayers.slice(0, 5).map((pname, i) => {
+          const ci = i % avColors.length;
+          const [bg, fg] = avColors[ci].split(':');
+          const ini = pname.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+          return `<div style="width:22px;height:22px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;margin-left:${i>0?'-6px':'0'};border:1.5px solid #fff;flex-shrink:0">${ini}</div>`;
+        }).join('');
+        const extraCount = uniquePlayers.length > 5 ? `<div style="width:22px;height:22px;border-radius:50%;background:#e5e7eb;color:#6b7280;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;margin-left:-6px;border:1.5px solid #fff;flex-shrink:0">+${uniquePlayers.length - 5}</div>` : '';
+
+        /* per-player detail rows */
+        const playerRows = items.map(r => {
+          const ci = playerIdx.get(r.player_name) % avColors.length;
+          const [bg, fg] = avColors[ci].split(':');
+          const ini = r.player_name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:0.5px solid #f9fafb">
+            <div style="width:28px;height:28px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0">${ini}</div>
+            <span style="flex:1;font-size:13px;color:#374151">${r.player_name}</span>
+            <span style="font-size:11px;color:#9ca3af;margin-right:8px">${r.slots} slot${Number(r.slots) !== 1 ? 's' : ''}</span>
+            <span style="font-size:13px;font-weight:600;color:#dc2626;min-width:56px;text-align:right">−$${Number(r.split_amount).toFixed(2)}</span>
+          </div>`;
+        }).join('');
+
+        return `<details class="split-session" style="border-bottom:0.5px solid #f3f4f6">
+          <summary style="list-style:none;display:flex;align-items:center;gap:10px;padding:11px 0;cursor:pointer;user-select:none">
+            <div class="split-chevron" style="width:18px;height:18px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .2s">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
+                <span style="font-size:13px;font-weight:600;color:#111">${date}</span>
+                <span style="font-size:12px;color:#374151">${desc}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                <div style="display:flex;align-items:center">${avatarStack}${extraCount}</div>
+                <span style="font-size:11px;color:#9ca3af">${playerCount} player${playerCount !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:#dc2626;white-space:nowrap">$${dayTotal.toFixed(2)}</span>
+          </summary>
+          <div style="padding:4px 0 10px 28px">
+            ${playerRows}
+          </div>
+        </details>`;
+      }).join('');
     }
 
-    /* ===== Public pagination ===== */
-    const PUB_ATT = { data: [], page: 1, pageSize: 10 };
-    const PUB_PAY = { data: [], page: 1, pageSize: 10 };
-    const SPLIT = { data: [], page: 1, pageSize: 10 };
-
-    function paginate(arr, page, size) {
-      const start = (page - 1) * size;
-      return arr.slice(start, start + size);
-    }
+    /* ===== Session state ===== */
+    const PUB_ATT = { data: [] };
+    const SPLIT   = { data: [] };
 
     function renderPublicAttendance() {
-      const container = document.getElementById('attendanceBody');
-      if (!container) return;
+      const body = document.getElementById('attGridBody');
+      if (!body) return;
+      const rows = PUB_ATT.data;
+      if (!rows.length) {
+        body.innerHTML = '<p class="text-sm text-gray-400 py-2">No attendance recorded yet.</p>';
+        return;
+      }
+      /* group by date, collect player names + slots */
+      const byDate = new Map();
+      for (const r of rows) {
+        if (!byDate.has(r.date)) byDate.set(r.date, []);
+        byDate.get(r.date).push({ name: r.players?.name ?? '?', slots: Number(r.slots) });
+      }
+      /* all unique players across all sessions for the grid header */
+      const allPlayers = [...new Set(rows.map(r => r.players?.name ?? '?'))].sort();
+      const avColors = ['#E6F1FB:#185FA5','#EAF3DE:#3B6D11','#FCEBEB:#A32D2D','#f3f4f6:#6b7280','#FAEEDA:#633806'];
 
-      const total = PUB_ATT.data.length;
-      const pages = Math.max(1, Math.ceil(total / PUB_ATT.pageSize));
-      PUB_ATT.page = Math.min(Math.max(1, PUB_ATT.page), pages);
-
-      const rows = paginate(PUB_ATT.data, PUB_ATT.page, PUB_ATT.pageSize);
-      container.innerHTML = rows.map(r => `
-        <tr class="border-b last:border-0">
-          <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2">${r.players?.name ?? r.player_id}</td>
-          <td class="px-3 py-2 text-right">${r.slots}</td>
-        </tr>
-      `).join('');
-
-      const info = document.getElementById('pubAttPageInfo');
-      if (info) info.textContent = `${PUB_ATT.page} / ${pages} (${total})`;
-      document.getElementById('pubAttPrev').disabled = PUB_ATT.page <= 1;
-      document.getElementById('pubAttNext').disabled = PUB_ATT.page >= pages;
+      body.innerHTML = [...byDate.entries()].map(([date, attendees]) => {
+        const total = attendees.reduce((s,a)=>s+a.slots,0);
+        const dots = attendees.map((a,i) => {
+          const ci = allPlayers.indexOf(a.name) % avColors.length;
+          const [bg,fg] = avColors[ci >= 0 ? ci : i % avColors.length].split(':');
+          const ini = a.name.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          const slots = a.slots > 1 ? `<span style="position:absolute;bottom:-1px;right:-1px;width:12px;height:12px;border-radius:50%;background:#374151;color:#fff;font-size:7px;display:flex;align-items:center;justify-content:center;font-weight:700">${a.slots}</span>` : '';
+          return `<div style="position:relative;width:30px;height:30px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0" title="${a.name}${a.slots>1?' ('+a.slots+' slots)':''}">${ini}${slots}</div>`;
+        }).join('');
+        return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:0.5px solid #f3f4f6">
+          <span style="font-size:12px;font-weight:600;color:#374151;min-width:80px;flex-shrink:0">${date}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;flex:1">${dots}</div>
+          <span style="font-size:12px;color:#9ca3af;white-space:nowrap;flex-shrink:0">${total} slot${total!==1?'s':''}</span>
+        </div>`;
+      }).join('');
     }
 
-    function renderPublicPayments() {
-      const container = document.getElementById('paymentsBody');
-      if (!container) return;
-
-      const total = PUB_PAY.data.length;
-      const pages = Math.max(1, Math.ceil(total / PUB_PAY.pageSize));
-      PUB_PAY.page = Math.min(Math.max(1, PUB_PAY.page), pages);
-
-      const rows = paginate(PUB_PAY.data, PUB_PAY.page, PUB_PAY.pageSize);
-      container.innerHTML = rows.map(r => `
-        <tr class="border-b last:border-0">
-          <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2">${r.players?.name ?? r.player_id}</td>
-          <td class="px-3 py-2 text-right">$${Number(r.amount).toFixed(2)}</td>
-          <td class="px-3 py-2">${r.note ?? ''}</td>
-        </tr>
-      `).join('');
-
-      const info = document.getElementById('pubPayPageInfo');
-      if (info) info.textContent = `${PUB_PAY.page} / ${pages} (${total})`;
-      document.getElementById('pubPayPrev').disabled = PUB_PAY.page <= 1;
-      document.getElementById('pubPayNext').disabled = PUB_PAY.page >= pages;
-    }
-
-    // Wire public pager controls
+    // Wire session tab bar only — pagers removed (tables replaced with visual renders)
     document.addEventListener('DOMContentLoaded', () => {
-      // Attendance
-      document.getElementById('pubAttPrev').onclick = () => {
-        if (PUB_ATT.page > 1) { PUB_ATT.page--; renderPublicAttendance(); }
-      };
-      document.getElementById('pubAttNext').onclick = () => {
-        PUB_ATT.page++; renderPublicAttendance();
-      };
-      document.getElementById('pubAttPageSize').onchange = (e) => {
-        PUB_ATT.pageSize = Number(e.target.value || 10);
-        PUB_ATT.page = 1;
-        renderPublicAttendance();
-      };
-
-      // Payments
-      document.getElementById('pubPayPrev').onclick = () => {
-        if (PUB_PAY.page > 1) { PUB_PAY.page--; renderPublicPayments(); }
-      };
-      document.getElementById('pubPayNext').onclick = () => {
-        PUB_PAY.page++; renderPublicPayments();
-      };
-      document.getElementById('pubPayPageSize').onchange = (e) => {
-        PUB_PAY.pageSize = Number(e.target.value || 10);
-        PUB_PAY.page = 1;
-        renderPublicPayments();
-      };
-
-      // Split ledger
-      document.getElementById('splitPrev').onclick = () => {
-        if (SPLIT.page > 1) { SPLIT.page--; renderSessionSplits(); }
-      };
-      document.getElementById('splitNext').onclick = () => {
-        SPLIT.page++; renderSessionSplits();
-      };
-      document.getElementById('splitPageSize').onchange = (e) => {
-        SPLIT.pageSize = Number(e.target.value || 10);
-        SPLIT.page = 1;
-        renderSessionSplits();
-      };
+      document.getElementById('sessTabBar').addEventListener('click', e => {
+        const btn = e.target.closest('.sess-tab');
+        if (!btn) return;
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.sess-tab').forEach(b => {
+          b.classList.toggle('sess-tab-active', b === btn);
+          if (b !== btn) { b.classList.add('border-gray-200','text-gray-500'); b.classList.remove('border-blue-800'); }
+          else { b.classList.remove('border-gray-200','text-gray-500'); }
+        });
+        ['split','att'].forEach(t => {
+          document.getElementById('sessPane-'+t).classList.toggle('hidden', t !== tab);
+        });
+      });
     });
 
     /* ===== Render helpers ===== */
@@ -598,34 +486,208 @@
     }
 
     function renderExpenses(rows) {
-      const body = document.getElementById('expensesBody');
+      const body  = document.getElementById('expensesBody');
+      const strip = document.getElementById('expTotalStrip');
       if (!body) return;
-      body.innerHTML = rows.map(r => `
-        <tr class="border-b last:border-0">
-          <td class="px-3 py-2">${r.date}</td>
-          <td class="px-3 py-2 text-right">$${Number(r.amount).toFixed(2)}</td>
-          <td class="px-3 py-2">${r.description ?? ''}</td>
-        </tr>
-      `).join('');
+      if (!rows.length) {
+        body.innerHTML = '<p class="text-sm text-gray-400 py-2">No expenses yet.</p>';
+        if (strip) strip.textContent = '';
+        return;
+      }
+
+      /* attendance by date for per-head + player dots */
+      const attByDate = new Map();
+      for (const r of (window.__lastAttendanceRows || [])) {
+        if (!attByDate.has(r.date)) attByDate.set(r.date, []);
+        attByDate.get(r.date).push({ name: r.players?.name ?? '?', slots: Number(r.slots ?? 1) });
+      }
+      /* group same-date expenses */
+      const byDate = new Map();
+      for (const r of rows) {
+        if (!byDate.has(r.date)) byDate.set(r.date, []);
+        byDate.get(r.date).push(r);
+      }
+
+      const grandTotal = rows.reduce((s,r)=>s+Number(r.amount),0);
+      if (strip) strip.textContent = `Total $${grandTotal.toFixed(2)}`;
+
+      const avColors = ['#E6F1FB:#185FA5','#EAF3DE:#3B6D11','#FCEBEB:#A32D2D','#f3f4f6:#6b7280','#FAEEDA:#633806'];
+      /* stable player→colour map across whole render */
+      const playerColorMap = new Map();
+      let colorCursor = 0;
+      for (const attendees of attByDate.values()) {
+        for (const a of attendees) {
+          if (!playerColorMap.has(a.name)) playerColorMap.set(a.name, colorCursor++ % avColors.length);
+        }
+      }
+
+      body.innerHTML = [...byDate.entries()].map(([date, items]) => {
+        const dayTotal   = items.reduce((s,r)=>s+Number(r.amount),0);
+        const attendees  = attByDate.get(date) || [];
+        const totalSlots = attendees.reduce((s,a)=>s+a.slots,0);
+        const perHead    = totalSlots > 0 ? (dayTotal/totalSlots).toFixed(2) : null;
+
+        const itemLines = items.map(r => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
+            <span style="font-size:13px;color:#374151;flex:1">${r.description ?? 'Expense'}</span>
+            <span style="font-size:13px;font-weight:600;color:#dc2626;margin-left:12px">$${Number(r.amount).toFixed(2)}</span>
+          </div>`).join('');
+
+        let __prIdx3 = (window.__playerRegistry ? Object.keys(window.__playerRegistry).length : 0);
+        const playerDots = attendees.map(a => {
+          const ci = playerColorMap.has(a.name) ? playerColorMap.get(a.name) : 0;
+          const [bg,fg] = avColors[ci].split(':');
+          const ini = a.name.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          const dk = __prIdx3++; window.__playerRegistry = window.__playerRegistry || {}; window.__playerRegistry[dk] = a.name;
+          return `<div style="width:28px;height:28px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer" title="${a.name}" onclick="event.stopPropagation();openPlayerDrawer(${dk})">${ini}</div>`;
+        }).join('');
+
+        const perHeadBadge = perHead
+          ? `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:#E6F1FB;color:#185FA5;font-weight:500">$${perHead}/head</span>`
+          : '';
+
+        return `<div style="display:flex;gap:14px;padding:12px 0;border-bottom:0.5px solid #f3f4f6">
+          <!-- timeline spine -->
+          <div style="display:flex;flex-direction:column;align-items:center;padding-top:3px">
+            <div style="width:10px;height:10px;border-radius:50%;background:#dc2626;flex-shrink:0"></div>
+            <div style="width:2px;flex:1;background:#f3f4f6;margin-top:4px"></div>
+          </div>
+          <!-- content -->
+          <div style="flex:1;min-width:0;padding-bottom:4px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+              <div>
+                <span style="font-size:13px;font-weight:600;color:#111">${date}</span>
+                ${perHeadBadge ? '<span style="margin-left:8px">' + perHeadBadge + '</span>' : ''}
+              </div>
+              <span style="font-size:15px;font-weight:700;color:#dc2626;white-space:nowrap">$${dayTotal.toFixed(2)}</span>
+            </div>
+            <div style="margin-bottom:6px">${itemLines}</div>
+            ${attendees.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${playerDots}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px">${totalSlots} slot${totalSlots!==1?'s':''} attended</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    /* ===== Balance card state ===== */
+    const BAL = { data: [], filter: 'all', sort: 'debt' };
+
+    function balStatus(bal) {
+      if (bal > 0)  return 'owes';
+      if (bal < 0)  return 'credit';
+      return 'settled';
     }
 
     function renderBalances(rows) {
-      balancesBody.innerHTML = rows.map(r => {
-        const bal = Number(r.balance);
-        const owes = bal > 0;
-        const cls = owes ? 'text-red-600' : (bal < 0 ? 'text-emerald-700' : 'text-gray-600');
-        const displayBal = owes ? bal : Math.abs(bal);
-        const prefix = bal === 0 ? '' : (owes ? '-' : '+');
-        return `
-          <tr>
-            <td class="px-3 py-2">${r.name}</td>
-            <td class="px-3 py-2 text-right">$${Number(r.total_owed).toFixed(2)}</td>
-            <td class="px-3 py-2 text-right">$${Number(r.total_paid).toFixed(2)}</td>
-            <td class="px-3 py-2 text-right font-semibold ${cls}">
-              ${bal === 0 ? '$0.00' : `${prefix}$${displayBal.toFixed(2)}`}
-            </td>
-          </tr>`;
+      BAL.data = (rows || []).map(r => ({ ...r, _bal: Number(r.balance) }));
+      applyBalanceView();
+      wireBalanceControls();
+    }
+
+    function initials(name) {
+      return name.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    }
+
+    function applyBalanceView() {
+      const list  = document.getElementById('balancesBody');
+      const strip = document.getElementById('balSummaryStrip');
+      if (!list) return;
+
+      const counts = { all: BAL.data.length, owes: 0, credit: 0, settled: 0 };
+      BAL.data.forEach(r => counts[balStatus(r._bal)]++);
+
+      document.querySelectorAll('.bal-tab').forEach(btn => {
+        const f = btn.dataset.filter;
+        const labels = { all:'All', owes:'Owes', credit:'Credit', settled:'Settled' };
+        btn.textContent = `${labels[f]} (${counts[f]})`;
+      });
+
+      const totalOwed   = BAL.data.filter(r=>r._bal>0).reduce((s,r)=>s+r._bal,0);
+      const totalCredit = BAL.data.filter(r=>r._bal<0).reduce((s,r)=>s+Math.abs(r._bal),0);
+      strip.innerHTML = `
+        <span class="text-xs px-3 py-1 rounded-full bg-red-50 text-red-700 font-medium">Outstanding $${totalOwed.toFixed(2)}</span>
+        <span class="text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">In credit $${totalCredit.toFixed(2)}</span>
+        <span class="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">${counts.settled} settled</span>`;
+
+      let visible = BAL.filter === 'all' ? [...BAL.data] : BAL.data.filter(r=>balStatus(r._bal)===BAL.filter);
+      if (BAL.sort==='debt')        visible.sort((a,b)=>b._bal-a._bal);
+      else if (BAL.sort==='credit') visible.sort((a,b)=>a._bal-b._bal);
+      else                          visible.sort((a,b)=>a.name.localeCompare(b.name));
+
+      if (!visible.length) {
+        list.innerHTML = `<p class="text-sm text-gray-400 py-4">No players in this category.</p>`;
+        return;
+      }
+
+      /* count sessions per player from cached attendance */
+      const sessMap = new Map();
+      for (const r of (window.__lastAttendanceRows || [])) {
+        const n = r?.players?.name ?? '';
+        if (n) sessMap.set(n, (sessMap.get(n)||0)+1);
+      }
+
+      window.__playerRegistry = {};
+      let __prIdx = 0;
+      list.innerHTML = visible.map(r => {
+        const bal    = r._bal;
+        const status = balStatus(bal);
+        const owed   = Number(r.total_owed);
+        const paid   = Number(r.total_paid);
+        const pct    = owed > 0 ? Math.min(100, Math.round((paid/owed)*100)) : 100;
+        const sess   = sessMap.get(r.name) || 0;
+
+        const avCls  = status==='owes' ? 'av-red' : status==='credit' ? 'av-grn' : 'av-gry';
+        const tagCls = status==='owes' ? 'bg-red-50 text-red-700' : status==='credit' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500';
+        const tagTxt = status==='owes' ? `owes $${bal.toFixed(2)}` : status==='credit' ? `+$${Math.abs(bal).toFixed(2)}` : 'settled';
+        const amtCls = status==='owes' ? 'text-red-600' : status==='credit' ? 'text-emerald-700' : 'text-gray-400';
+        const amtTxt = status==='owes' ? `-$${bal.toFixed(2)}` : status==='credit' ? `+$${Math.abs(bal).toFixed(2)}` : '$0.00';
+        const barCol = status==='owes' ? '#ef4444' : status==='credit' ? '#22c55e' : '#9ca3af';
+        const dimCls = status==='settled' ? 'dim' : '';
+
+        const __pk = __prIdx++; window.__playerRegistry[__pk] = r.name;
+        return `<div class="player-row ${dimCls}" onclick="openPlayerDrawer(${__pk})">
+          <div class="av ${avCls}">${initials(r.name)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name}</span>
+              <span style="font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;white-space:nowrap" class="${tagCls}">${tagTxt}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+              <div class="pr-bar-bg" style="flex:1"><div class="pr-bar-fill" style="width:${pct}%;background:${barCol}"></div></div>
+              <span style="font-size:11px;color:#9ca3af;white-space:nowrap">$${paid.toFixed(2)} of $${owed.toFixed(2)} · ${sess} session${sess!==1?'s':''}</span>
+            </div>
+          </div>
+          <span style="font-size:15px;font-weight:500;min-width:64px;text-align:right" class="${amtCls}">${amtTxt}</span>
+          <span style="color:#d1d5db;font-size:16px">›</span>
+        </div>`;
       }).join('');
+    }
+
+    function wireBalanceControls() {
+      /* tabs — only wire once */
+      if (document.getElementById('balFilterTabs').dataset.wired) return;
+      document.getElementById('balFilterTabs').dataset.wired = '1';
+
+      document.querySelectorAll('.bal-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          BAL.filter = btn.dataset.filter;
+          document.querySelectorAll('.bal-tab').forEach(b => {
+            b.classList.toggle('bal-tab-active', b === btn);
+            if (b !== btn) {
+              b.classList.add('border-gray-200', 'text-gray-500');
+              b.classList.remove('border-blue-800');
+            } else {
+              b.classList.remove('border-gray-200', 'text-gray-500');
+            }
+          });
+          applyBalanceView();
+        });
+      });
+
+      document.getElementById('balSort').addEventListener('change', e => {
+        BAL.sort = e.target.value;
+        applyBalanceView();
+      });
     }
 
     /* ===== Initial load ===== */
@@ -640,6 +702,12 @@
         fetchSessionSplits()
       ]);
 
+      /* cache first — every render function below reads from these */
+      window.__lastAttendanceRows = attendance;
+      window.__lastPaymentRows    = payments;
+      window.__lastSplitRows      = splits   || [];
+      window.__lastBalanceRows    = balances  || [];
+
       renderPlayers(players);
       renderBalances(balances);
       renderExpenses(expenses);
@@ -648,14 +716,10 @@
       renderSessionSplits();
 
       PUB_ATT.data = attendance || [];
-      PUB_PAY.data = payments || [];
       renderPublicAttendance();
-      renderPublicPayments();
-
-      window.__lastAttendanceRows = attendance;
-      const limitSel = document.getElementById('playerChartLimit');
+      const limitSel = document.getElementById('attLeaderLimit');
       const limit = limitSel ? Number(limitSel.value) : 10;
-      renderPlayerAttendanceChart(attendance, limit);
+      renderAttendanceLeaderboard(attendance, limit);
     }
 
     // Forms (Admin)
@@ -699,8 +763,272 @@
       refreshAll();
     });
 
-    // Boot
+    /* ===== Player drawer ===== */
+    function openPlayerDrawer(keyOrName) {
+      const name = (typeof keyOrName === 'number' || (typeof keyOrName === 'string' && !isNaN(keyOrName)))
+        ? (window.__playerRegistry && window.__playerRegistry[keyOrName]) || String(keyOrName)
+        : keyOrName;
+      const allPay = window.__lastPaymentRows || [];
+      const allAtt = window.__lastAttendanceRows || [];
+      const allSpl = window.__lastSplitRows    || [];
+
+      const playerPay = allPay.filter(r => (r.players?.name ?? '') === name)
+                              .sort((a,b) => b.date.localeCompare(a.date));
+      const playerAtt = allAtt.filter(r => (r.players?.name ?? '') === name)
+                              .sort((a,b) => b.date.localeCompare(a.date));
+      const playerSpl = allSpl.filter(r => (r.player_name ?? '') === name)
+                              .sort((a,b) => b.date.localeCompare(a.date));
+
+      const totalPaid  = playerPay.reduce((s,r) => s + Number(r.amount), 0);
+      const totalSlots = playerAtt.reduce((s,r) => s + Number(r.slots), 0);
+
+      /* header — use balance_view as the single source of truth for all money figures */
+      const ini = name.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+      const balRow = (window.__lastBalanceRows || []).find(r => r.name === name);
+      const balRaw     = balRow ? Number(balRow.balance)    : null;
+      const bal        = balRaw !== null ? Math.round(balRaw * 100) / 100 : null;
+      const totalOwedLedger  = balRow ? Number(balRow.total_owed) : null;
+      const totalPaidLedger  = balRow ? Number(balRow.total_paid) : null;
+      const avCls = bal === null ? 'av-gry' : bal > 0 ? 'av-red' : bal < 0 ? 'av-grn' : 'av-gry';
+      document.getElementById('drawerAv').className = `av ${avCls}`;
+      document.getElementById('drawerAv').textContent = ini;
+      document.getElementById('drawerName').textContent = name;
+
+      /* subtitle: one-line human-readable balance statement */
+      const balStatement = bal === null    ? 'No ledger data'
+        : bal > 0  ? `Owes $${bal.toFixed(2)}`
+        : bal < 0  ? `$${Math.abs(bal).toFixed(2)} in credit`
+        : 'All settled up';
+      document.getElementById('drawerMeta').textContent =
+        `${balStatement} · ${totalSlots} session${totalSlots!==1?'s':''} attended`;
+
+      /* balance breakdown pill — shows the full maths clearly */
+      const paidLbl  = totalPaidLedger !== null ? `$${totalPaidLedger.toFixed(2)}` : '—';
+      const owedLbl  = totalOwedLedger !== null ? `$${totalOwedLedger.toFixed(2)}` : '—';
+      const balColBg = bal === null ? '#f3f4f6' : bal > 0 ? '#FCEBEB' : bal < 0 ? '#EAF3DE' : '#f3f4f6';
+      const balColFg = bal === null ? '#6b7280' : bal > 0 ? '#A32D2D' : bal < 0 ? '#3B6D11' : '#6b7280';
+      const balSign  = bal !== null && bal < 0 ? '+' : bal !== null && bal > 0 ? '−' : '';
+      const balAmt   = bal !== null ? `${balSign}$${Math.abs(bal).toFixed(2)}` : '—';
+
+      document.getElementById('drawerPills').innerHTML = `
+        <div style="width:100%;background:#f9fafb;border-radius:10px;padding:10px 14px;font-size:13px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="color:#6b7280;font-size:12px">How the balance is calculated</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="color:#6b7280;font-size:12px">Total charged</span>
+            <span style="font-weight:600;color:#374151">${owedLbl}</span>
+            <span style="color:#9ca3af">−</span>
+            <span style="color:#6b7280;font-size:12px">Total paid</span>
+            <span style="font-weight:600;color:#15803d">${paidLbl}</span>
+            <span style="color:#9ca3af">=</span>
+            <span style="padding:3px 10px;border-radius:20px;background:${balColBg};color:${balColFg};font-weight:700;font-size:13px">${balAmt}</span>
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px">${totalSlots} slot${totalSlots!==1?'s':''} attended · ${playerPay.length} payment${playerPay.length!==1?'s':''} recorded</div>
+        </div>`;
+
+      /* ── OVERVIEW: interleaved timeline ── */
+      const timeline = [];
+      for (const r of playerPay) timeline.push({ date:r.date, type:'payment', amount:Number(r.amount), note:r.note });
+      for (const r of playerSpl) timeline.push({ date:r.date, type:'split',   amount:Number(r.split_amount), desc:r.description });
+      timeline.sort((a,b) => b.date.localeCompare(a.date));
+
+      const overviewNote = `<div style="font-size:11px;color:#9ca3af;padding:6px 0 10px;border-bottom:0.5px solid #f3f4f6;margin-bottom:4px">
+        Recent activity — splits shown are the last 500 sessions. The balance above is the authoritative total from the group ledger.
+      </div>`;
+
+      if (!timeline.length) {
+        document.getElementById('drawerOverviewBody').innerHTML =
+          overviewNote + '<p style="font-size:13px;color:#9ca3af;padding:12px 0">No activity yet.</p>';
+      } else {
+        document.getElementById('drawerOverviewBody').innerHTML =
+          overviewNote + timeline.map(t => {
+            const isPay  = t.type === 'payment';
+            const dotCol = isPay ? '#22c55e' : '#ef4444';
+            const amtCol = isPay ? '#15803d' : '#dc2626';
+            const sign   = isPay ? '+' : '−';
+            const label  = isPay ? (t.note || 'Payment') : (t.desc || 'Session split');
+            const typeTag = isPay
+              ? `<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#EAF3DE;color:#3B6D11">payment</span>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#FCEBEB;color:#A32D2D">split</span>`;
+            return `<div class="tl-row">
+              <div class="tl-dot" style="background:${dotCol}"></div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-size:13px;font-weight:500">${label}</span>${typeTag}
+                </div>
+                <div style="font-size:11px;color:#9ca3af;margin-top:1px">${t.date}</div>
+              </div>
+              <span style="font-size:14px;font-weight:600;color:${amtCol};white-space:nowrap">${sign}$${t.amount.toFixed(2)}</span>
+            </div>`;
+          }).join('');
+      }
+
+      /* ── PAYMENTS pane ── */
+      if (!playerPay.length) {
+        document.getElementById('drawerPaymentsBody').innerHTML =
+          '<p style="font-size:13px;color:#9ca3af;padding:12px 0">No payments recorded.</p>';
+      } else {
+        document.getElementById('drawerPaymentsBody').innerHTML =
+          playerPay.map(r => `
+            <div class="tl-row">
+              <div class="tl-dot" style="background:#22c55e"></div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:500">${r.note || 'Payment'}</div>
+                <div style="font-size:11px;color:#9ca3af">${r.date}</div>
+              </div>
+              <span style="font-size:14px;font-weight:600;color:#15803d">+$${Number(r.amount).toFixed(2)}</span>
+            </div>`).join('') +
+          `<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:0.5px solid #e5e7eb;font-size:13px;font-weight:600">
+            <span style="color:#374151">Total paid</span>
+            <span style="color:#15803d">$${totalPaid.toFixed(2)}</span>
+          </div>`;
+      }
+
+      /* ── ATTENDANCE pane ── */
+      const attDates = new Set(playerAtt.map(r=>r.date));
+      const allDates = [...new Set((window.__lastAttendanceRows||[]).map(r=>r.date))].sort((a,b)=>b.localeCompare(a)).slice(0,24);
+      const dotGrid  = allDates.map(d =>
+        `<div style="width:14px;height:14px;border-radius:3px;background:${attDates.has(d)?'#3b82f6':'#e5e7eb'}" title="${d}"></div>`
+      ).join('');
+
+      document.getElementById('drawerAttBody').innerHTML =
+        `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Last ${allDates.length} sessions</div>
+         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${dotGrid}</div>
+         <div style="display:flex;gap:12px;font-size:11px;color:#9ca3af;margin-bottom:14px;align-items:center">
+           <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3b82f6;margin-right:3px;vertical-align:middle"></span>attended</span>
+           <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e5e7eb;margin-right:3px;vertical-align:middle"></span>absent</span>
+         </div>` +
+        (playerAtt.length
+          ? playerAtt.map(r=>`
+              <div class="tl-row">
+                <div class="tl-dot" style="background:#3b82f6"></div>
+                <div style="flex:1"><div style="font-size:13px;font-weight:500">${r.date}</div></div>
+                <span style="font-size:13px;font-weight:600;color:#1d4ed8">${r.slots} slot${Number(r.slots)!==1?'s':''}</span>
+              </div>`).join('') +
+            `<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:0.5px solid #e5e7eb;font-size:13px;font-weight:600">
+              <span style="color:#374151">Total slots</span>
+              <span style="color:#1d4ed8">${totalSlots}</span>
+            </div>`
+          : '<p style="font-size:13px;color:#9ca3af">No attendance recorded.</p>');
+
+      /* ── SESSIONS BILLED pane ── */
+      /* Footer uses totalOwedLedger from balance_view (authoritative).
+         playerSpl rows are the session-by-session detail only. */
+      if (!playerSpl.length) {
+        document.getElementById('drawerBilledBody').innerHTML =
+          '<p style="font-size:13px;color:#9ca3af;padding:12px 0">No session charges recorded yet.</p>';
+      } else {
+        const splByDate = new Map();
+        for (const r of playerSpl) {
+          if (!splByDate.has(r.date)) splByDate.set(r.date, []);
+          splByDate.get(r.date).push(r);
+        }
+        const sessionRows = [...splByDate.entries()].map(([date, items]) => {
+          const dayTotal = items.reduce((s,r)=>s+Number(r.split_amount),0);
+          const lines = items.map(r=>`
+            <div style="display:flex;justify-content:space-between;padding:3px 0 3px 10px;font-size:12px;color:#6b7280">
+              <span>${r.description || 'Session'} · ${r.slots} slot${Number(r.slots)!==1?'s':''}</span>
+              <span style="color:#dc2626;font-weight:500">$${Number(r.split_amount).toFixed(2)}</span>
+            </div>`).join('');
+          return `<div style="padding:8px 0;border-bottom:0.5px solid #f3f4f6">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+              <span style="font-size:13px;font-weight:600;color:#374151">${date}</span>
+              <span style="font-size:13px;font-weight:600;color:#dc2626">$${dayTotal.toFixed(2)}</span>
+            </div>
+            ${lines}
+          </div>`;
+        }).join('');
+
+        /* use ledger total (from balance_view) as the footer — it's the single source of truth */
+        const footerTotal = totalOwedLedger !== null
+          ? totalOwedLedger
+          : playerSpl.reduce((s,r)=>s+Number(r.split_amount),0);
+        const footerSrc = totalOwedLedger !== null
+          ? '<span style="font-size:11px;color:#9ca3af;margin-left:6px;font-weight:400">from group ledger</span>'
+          : '<span style="font-size:11px;color:#9ca3af;margin-left:6px;font-weight:400">sum of visible rows</span>';
+
+        document.getElementById('drawerBilledBody').innerHTML =
+          sessionRows +
+          `<div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:0.5px solid #e5e7eb;font-size:13px;font-weight:600">
+            <span style="color:#374151">Total charged${footerSrc}</span>
+            <span style="color:#dc2626">$${footerTotal.toFixed(2)}</span>
+          </div>`;
+      }
+
+      /* open drawer */
+      switchDrawerTab(document.querySelector('[data-dtab="overview"]'));
+      document.getElementById('playerDrawer').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closePlayerDrawer() {
+      document.getElementById('playerDrawer').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function switchDrawerTab(btn) {
+      document.querySelectorAll('.dtab-btn').forEach(b => {
+        const active = b === btn;
+        b.classList.toggle('dtab-active', active);
+        const pane = document.getElementById('dtab-' + b.dataset.dtab);
+        if (pane) pane.style.display = active ? 'block' : 'none';
+      });
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closePlayerDrawer();
+    });
+
+    /* expose to global scope — required because this script is type="module"
+       and inline onclick attributes cannot reach module-scoped functions */
+    window.openPlayerDrawer  = openPlayerDrawer;
+    window.closePlayerDrawer = closePlayerDrawer;
+    window.switchDrawerTab   = switchDrawerTab;
+
+        // Boot
     refreshAll();
   </script>
+  <!-- Player drawer -->
+  <div id="playerDrawer" role="dialog" aria-modal="true">
+    <div id="drawerBackdrop" onclick="closePlayerDrawer()"></div>
+    <div id="drawerPanel">
+      <!-- header -->
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+        <div id="drawerAv" class="av av-red flex-shrink-0"></div>
+        <div class="flex-1 min-w-0">
+          <div id="drawerName" class="text-base font-semibold leading-tight"></div>
+          <div id="drawerMeta" class="text-xs text-gray-400 mt-0.5"></div>
+        </div>
+        <button onclick="closePlayerDrawer()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none ml-2">&times;</button>
+      </div>
+      <!-- summary pills -->
+      <div id="drawerPills" class="flex flex-wrap gap-2 px-5 py-3 border-b border-gray-100" style="flex-shrink:0"></div>
+      <!-- tabs -->
+      <div class="flex border-b border-gray-100 px-5" style="overflow-x:auto;flex-shrink:0">
+        <button data-dtab="overview"    onclick="switchDrawerTab(this)" class="dtab-btn dtab-active">Overview</button>
+        <button data-dtab="payments"    onclick="switchDrawerTab(this)" class="dtab-btn">Payments</button>
+        <button data-dtab="attendance"  onclick="switchDrawerTab(this)" class="dtab-btn">Attendance</button>
+        <button data-dtab="billed"      onclick="switchDrawerTab(this)" class="dtab-btn">Sessions billed</button>
+      </div>
+      <!-- overview pane -->
+      <div id="dtab-overview" class="dtab-pane">
+        <div id="drawerOverviewBody"><p class="text-sm text-gray-400">Loading…</p></div>
+      </div>
+      <!-- payments pane -->
+      <div id="dtab-payments" class="dtab-pane" style="display:none">
+        <div id="drawerPaymentsBody"><p class="text-sm text-gray-400">Loading…</p></div>
+      </div>
+      <!-- attendance pane -->
+      <div id="dtab-attendance" class="dtab-pane" style="display:none">
+        <div id="drawerAttBody"><p class="text-sm text-gray-400">Loading…</p></div>
+      </div>
+      <!-- sessions billed pane -->
+      <div id="dtab-billed" class="dtab-pane" style="display:none">
+        <div id="drawerBilledBody"><p class="text-sm text-gray-400">Loading…</p></div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
