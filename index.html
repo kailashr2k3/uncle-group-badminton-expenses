@@ -803,6 +803,12 @@
         `${balStatement} · ${totalSlots} session${totalSlots!==1?'s':''} attended`;
 
       /* balance breakdown pill — shows the full maths clearly */
+      /* gap calculations needed here too for the pill footer warning */
+      const visiblePaid  = playerPay.reduce((s,r) => s + Number(r.amount), 0);
+      const visibleOwed  = playerSpl.reduce((s,r) => s + Number(r.split_amount), 0);
+      const paidGap = totalPaidLedger !== null ? Math.round((totalPaidLedger - visiblePaid) * 100) / 100 : 0;
+      const owedGap = totalOwedLedger !== null ? Math.round((totalOwedLedger - visibleOwed) * 100) / 100 : 0;
+
       const paidLbl  = totalPaidLedger !== null ? `$${totalPaidLedger.toFixed(2)}` : '—';
       const owedLbl  = totalOwedLedger !== null ? `$${totalOwedLedger.toFixed(2)}` : '—';
       const balColBg = bal === null ? '#f3f4f6' : bal > 0 ? '#FCEBEB' : bal < 0 ? '#EAF3DE' : '#f3f4f6';
@@ -824,7 +830,7 @@
             <span style="color:#9ca3af">=</span>
             <span style="padding:3px 10px;border-radius:20px;background:${balColBg};color:${balColFg};font-weight:700;font-size:13px">${balAmt}</span>
           </div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px">${totalSlots} slot${totalSlots!==1?'s':''} attended · ${playerPay.length} payment${playerPay.length!==1?'s':''} recorded</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px">${totalSlots} slot${totalSlots!==1?'s':''} attended · ${playerPay.length} payment row${playerPay.length!==1?'s':''} visible in timeline${Math.abs(paidGap??0) > 0.01 ? ' · ⚠ ledger has more' : ''}</div>
         </div>`;
 
       /* ── OVERVIEW: interleaved timeline ── */
@@ -833,16 +839,37 @@
       for (const r of playerSpl) timeline.push({ date:r.date, type:'split',   amount:Number(r.split_amount), desc:r.description });
       timeline.sort((a,b) => b.date.localeCompare(a.date));
 
-      const overviewNote = `<div style="font-size:11px;color:#9ca3af;padding:6px 0 10px;border-bottom:0.5px solid #f3f4f6;margin-bottom:4px">
-        Recent activity — splits shown are the last 500 sessions. The balance above is the authoritative total from the group ledger.
-      </div>`;
+      const reconcileWarning = (Math.abs(paidGap) > 0.01 || Math.abs(owedGap) > 0.01) ? `
+        <div style="background:#FAEEDA;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#633806">
+          <div style="font-weight:600;margin-bottom:2px">Timeline may be incomplete</div>
+          ${Math.abs(paidGap) > 0.01 ? `<div>$${Math.abs(paidGap).toFixed(2)} in payments exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
+          ${Math.abs(owedGap) > 0.01 ? `<div>$${Math.abs(owedGap).toFixed(2)} in charges exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
+          <div style="margin-top:4px;color:#854F0B">The balance box above uses the group ledger and is always correct.</div>
+        </div>` : '';
+
+      /* running balance footer — uses ledger totals as anchor */
+      const summaryFooter = totalPaidLedger !== null ? `
+        <div style="border-top:0.5px solid #e5e7eb;margin-top:8px;padding-top:10px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;justify-content:space-between;font-size:12px">
+            <span style="color:#6b7280">Total charged (ledger)</span>
+            <span style="font-weight:600;color:#dc2626">$${totalOwedLedger.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px">
+            <span style="color:#6b7280">Total paid (ledger)</span>
+            <span style="font-weight:600;color:#15803d">$${totalPaidLedger.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;border-top:0.5px solid #f3f4f6;padding-top:6px;margin-top:2px">
+            <span style="color:#374151">Balance</span>
+            <span style="color:${balColFg}">${balAmt}</span>
+          </div>
+        </div>` : '';
 
       if (!timeline.length) {
         document.getElementById('drawerOverviewBody').innerHTML =
-          overviewNote + '<p style="font-size:13px;color:#9ca3af;padding:12px 0">No activity yet.</p>';
+          reconcileWarning + '<p style="font-size:13px;color:#9ca3af;padding:12px 0">No activity yet.</p>' + summaryFooter;
       } else {
         document.getElementById('drawerOverviewBody').innerHTML =
-          overviewNote + timeline.map(t => {
+          reconcileWarning + timeline.map(t => {
             const isPay  = t.type === 'payment';
             const dotCol = isPay ? '#22c55e' : '#ef4444';
             const amtCol = isPay ? '#15803d' : '#dc2626';
@@ -861,7 +888,7 @@
               </div>
               <span style="font-size:14px;font-weight:600;color:${amtCol};white-space:nowrap">${sign}$${t.amount.toFixed(2)}</span>
             </div>`;
-          }).join('');
+          }).join('') + summaryFooter;
       }
 
       /* ── PAYMENTS pane ── */
