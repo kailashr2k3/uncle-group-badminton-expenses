@@ -830,7 +830,7 @@
             <span style="color:#9ca3af">=</span>
             <span style="padding:3px 10px;border-radius:20px;background:${balColBg};color:${balColFg};font-weight:700;font-size:13px">${balAmt}</span>
           </div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px">${totalSlots} slot${totalSlots!==1?'s':''} attended · ${playerPay.length} payment row${playerPay.length!==1?'s':''} visible in timeline${Math.abs(paidGap??0) > 0.01 ? ' · ⚠ ledger has more' : ''}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px">${totalSlots} slot${totalSlots!==1?'s':''} attended · ${playerPay.length} payment row${playerPay.length!==1?'s':''} visible in timeline${Math.abs(paidGap??0) > 2.00 ? ' · ⚠ ledger has more' : ''}</div>
         </div>`;
 
       /* ── OVERVIEW: interleaved timeline ── */
@@ -839,11 +839,11 @@
       for (const r of playerSpl) timeline.push({ date:r.date, type:'split',   amount:Number(r.split_amount), desc:r.description });
       timeline.sort((a,b) => b.date.localeCompare(a.date));
 
-      const reconcileWarning = (Math.abs(paidGap) > 0.01 || Math.abs(owedGap) > 0.01) ? `
+      const reconcileWarning = (Math.abs(paidGap) > 2.00 || Math.abs(owedGap) > 2.00) ? `
         <div style="background:#FAEEDA;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#633806">
           <div style="font-weight:600;margin-bottom:2px">Timeline may be incomplete</div>
-          ${Math.abs(paidGap) > 0.01 ? `<div>$${Math.abs(paidGap).toFixed(2)} in payments exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
-          ${Math.abs(owedGap) > 0.01 ? `<div>$${Math.abs(owedGap).toFixed(2)} in charges exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
+          ${Math.abs(paidGap) > 2.00 ? `<div>$${Math.abs(paidGap).toFixed(2)} in payments exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
+          ${Math.abs(owedGap) > 2.00 ? `<div>$${Math.abs(owedGap).toFixed(2)} in charges exists in the ledger but isn't matched to this player name in the timeline.</div>` : ''}
           <div style="margin-top:4px;color:#854F0B">The balance box above uses the group ledger and is always correct.</div>
         </div>` : '';
 
