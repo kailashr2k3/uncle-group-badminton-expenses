@@ -766,7 +766,7 @@ function wireStep(step) {
       W.innings = 1;
       W.currentBowler = fieldingSquad()[0]?.name || '';
       document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(2); // toss
+      setStep(2); // toss ✓
     };
   }
   if (step==='toss') {
@@ -782,7 +782,7 @@ function wireStep(step) {
       resetScoringState();
       W.innings = 1;
       W.currentBowler = fieldingSquad()[0]?.name || '';
-      setStep(3); // innings1
+      setStep(3); // innings1 ✓
       openPairModal(false);
     };
   }
@@ -812,7 +812,7 @@ function resetScoringState() {
   W.overNum=1; W.balls=[]; W.allOvers=[];
   W.batsmanStats={}; W.bowlerStats={};
   W.pairHistory=[]; W.currentPair=null;
-  W.striker=0; W.overJustDone=false; W.needsBowlerChange=false; W.lastBowler=null; W.lastSnap=null;
+  W.striker=0; W.overJustDone=false; W.needsBowlerChange=false; W.lastBowler=null; W.lastSnap=null; W.pendingBalls=[];
 }
 
 function resetWizard() {
@@ -1000,8 +1000,8 @@ document.getElementById('wktConfirmBtn').onclick = async () => {
   // batsman stat
   const bt = W.batsmanStats[batsmanName] || {runs:0,balls:0,wickets:0};
   W.batsmanStats[batsmanName] = {...bt, balls:bt.balls+1, wickets:bt.wickets+1};
-  // write ball to DB
-  await writeBall({ type:'wkt', runs:0, extra:false, batsmanName });
+  // buffer wicket ball — will be saved with the over
+  W.pendingBalls.push({ type:'wkt', runs:0, extra:false, batsmanName });
   const legal = newBalls.filter(b=>!b.extra).length;
   if (legal===6) await finishOver(newBalls);
   else renderStep();
@@ -1020,7 +1020,7 @@ window.recordBall = async (act, val) => {
   if (act==='wd'||act==='nb') {
     W.balls.push({ type:act, runs:1, extra:true });
     W.score++;
-    await writeBall({ type:act, runs:1, extra:true, batsmanName });
+    W.pendingBalls.push({ type:act, runs:1, extra:true, batsmanName });
   } else {
     const runs = val;
     W.balls.push({ type:`run${runs}`, runs, extra:false });
@@ -1028,7 +1028,7 @@ window.recordBall = async (act, val) => {
     const bt = W.batsmanStats[batsmanName]||{runs:0,balls:0,wickets:0};
     W.batsmanStats[batsmanName] = {...bt, runs:bt.runs+runs, balls:bt.balls+1};
     if (runs%2!==0) W.striker = 1-W.striker;
-    await writeBall({ type:`run${runs}`, runs, extra:false, batsmanName });
+    W.pendingBalls.push({ type:`run${runs}`, runs, extra:false, batsmanName });
     const legal = W.balls.filter(b=>!b.extra).length;
     if (legal===6) { await finishOver(W.balls); return; }
   }
@@ -1038,47 +1038,54 @@ window.recordBall = async (act, val) => {
 // ── Over completion ───────────────────────────────────────
 async function finishOver(balls) {
   const overRuns = balls.reduce((s,b)=>s+b.runs,0);
+  const bowlerObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===W.currentBowler);
+
   W.allOvers.push({ num:W.overNum, bowler:W.currentBowler, balls:[...balls], runs:overRuns });
   const bs = W.bowlerStats[W.currentBowler]||{overs:0,runs:0,wickets:0};
   W.bowlerStats[W.currentBowler] = {...bs, overs:bs.overs+1, runs:bs.runs+overRuns};
-  // write over to DB
-  // find bowler's player_id from squads
-  const bowlerObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===W.currentBowler);
-  await sb.from('cricket_overs').insert({
+
+  // 1. Save over to DB first, get the ID
+  const { data:ovRow, error:ovErr } = await sb.from('cricket_overs').insert({
     match_id:W.matchId, innings:W.innings, over_number:W.overNum,
     bowler_id:       bowlerObj?.id || null,
     bowler_guest:    bowlerObj?.id ? null : W.currentBowler,
     striker_id:      W.currentPair?.p1?.id || null,
     non_striker_id:  W.currentPair?.p2?.id || null,
-    runs_scored:overRuns, wickets:balls.filter(b=>b.type==='wkt').length
-  });
+    runs_scored:overRuns,
+    wickets:balls.filter(b=>b.type==='wkt').length
+  }).select('id').single();
+  if (ovErr) console.error('Over save failed:', ovErr);
+
+  // 2. Save all buffered balls for this over now that we have the over id
+  if (ovRow?.id && W.pendingBalls.length) {
+    let legalCount = 0;
+    const ballRows = W.pendingBalls.map(b => {
+      const bObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===b.batsmanName);
+      if (!b.extra) legalCount++;
+      return {
+        over_id:       ovRow.id,
+        ball_number:   b.extra ? 0 : legalCount,
+        batsman_id:    bObj?.id || null,
+        batsman_guest: bObj?.id ? null : (b.batsmanName || null),
+        runs:          b.runs,
+        extra_type:    b.extra ? b.type : null,
+        is_wicket:     b.type === 'wkt'
+      };
+    });
+    const { error:ballErr } = await sb.from('cricket_balls').insert(ballRows);
+    if (ballErr) console.error('Ball save failed:', ballErr);
+  }
+  W.pendingBalls = [];
   W.balls = [];
   W.overNum++;
   W.striker = 1-W.striker;
   W.overJustDone = true;
-  W.lastBowler = W.currentBowler;   // remember who just bowled
-  W.needsBowlerChange = true;        // force bowler change next over
+  W.lastBowler = W.currentBowler;
+  W.needsBowlerChange = true;
   renderStep();
 }
 
-// ── Write ball to DB ──────────────────────────────────────
-async function writeBall({ type, runs, extra, batsmanName }) {
-  // get the latest over id
-  const { data:ovRow } = await sb.from('cricket_overs')
-    .select('id').eq('match_id',W.matchId).eq('innings',W.innings)
-    .eq('over_number',W.overNum).maybeSingle();
-  if (!ovRow) return; // over not saved yet — balls are saved at over completion
-  const legalSoFar = W.balls.filter(b=>!b.extra).length;
-  const batsmanObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===batsmanName);
-  await sb.from('cricket_balls').insert({
-    over_id:ovRow.id, ball_number:extra?0:legalSoFar,
-    batsman_id:    batsmanObj?.id || null,
-    batsman_guest: batsmanObj?.id ? null : batsmanName,
-    runs,
-    extra_type: extra ? type : null,
-    is_wicket: type==='wkt'
-  });
-}
+// writeBall removed — balls now buffered in W.pendingBalls and written in finishOver
 
 // ── Abandon match ────────────────────────────────────────
 window.abandonMatch = async (matchId) => {
@@ -1300,7 +1307,7 @@ async function finishInnings() {
       innings1_gross:W.score, innings1_penalty:W.penalties,
       innings1_net:net, innings1_wickets:W.wickets
     }).eq('id',W.matchId);
-    setStep(3);
+    setStep(4); // break
   } else {
     const inn2Net = net;
     const won = inn2Net >= W.inn1.net + 1;
@@ -1312,7 +1319,7 @@ async function finishInnings() {
     }).eq('id',W.matchId);
     sessionStorage.removeItem('activeCricketMatchId');
     loadRecentMatches();
-    setStep(5);
+    setStep(6); // result
   }
 }
 
