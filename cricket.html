@@ -38,18 +38,23 @@
     </div>
   </nav>
 
+  <!-- Admin panel — always above matches, injected by JS after auth check -->
+  <div id="adminMount" class="mb-6"></div>
+
   <!-- Public: Recent Matches -->
   <section id="publicSection">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-xl font-bold">Cricket Matches</h1>
+      <div class="flex items-center gap-2">
+        <button id="matchPrev" class="text-xs px-2.5 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40">← Prev</button>
+        <span id="matchPageInfo" class="text-xs text-gray-500 min-w-16 text-center">1 / 1</span>
+        <button id="matchNext" class="text-xs px-2.5 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40">Next →</button>
+      </div>
     </div>
     <div id="recentMatchesList" class="flex flex-col gap-3">
       <p class="text-sm text-gray-400">Loading matches…</p>
     </div>
   </section>
-
-  <!-- Admin panel — injected here by JS after auth check -->
-  <div id="adminMount" class="mt-6"></div>
 
 </div>
 
@@ -109,24 +114,35 @@ async function getUser() {
 }
 
 // ── Public: load recent matches ───────────────────────────
-// isAdmin controls whether Resume / Abandon buttons are shown
-async function loadRecentMatches(isAdmin = false) {
-  const { data, error } = await sb
-    .from('cricket_match_summary')
-    .select('*')
-    .order('date', { ascending: false })
-    .limit(20);
+// ── Match pagination state ────────────────────────────────
+const MATCH_PAGE = { all: [], page: 1, pageSize: 5, isAdmin: false };
 
-  const list = document.getElementById('recentMatchesList');
-  if (error || !data?.length) {
+function renderMatchPage() {
+  const list  = document.getElementById('recentMatchesList');
+  const info  = document.getElementById('matchPageInfo');
+  const prev  = document.getElementById('matchPrev');
+  const next  = document.getElementById('matchNext');
+  if (!list) return;
+
+  const data   = MATCH_PAGE.all;
+  const total  = data.length;
+  const pages  = Math.max(1, Math.ceil(total / MATCH_PAGE.pageSize));
+  MATCH_PAGE.page = Math.min(Math.max(1, MATCH_PAGE.page), pages);
+  const start  = (MATCH_PAGE.page - 1) * MATCH_PAGE.pageSize;
+  const slice  = data.slice(start, start + MATCH_PAGE.pageSize);
+
+  if (info) info.textContent = `${MATCH_PAGE.page} / ${pages}`;
+  if (prev) prev.disabled = MATCH_PAGE.page <= 1;
+  if (next) next.disabled = MATCH_PAGE.page >= pages;
+
+  if (!slice.length) {
     list.innerHTML = '<p class="text-sm text-gray-400">No matches yet.</p>';
     return;
   }
 
-  // filter out abandoned from public view
-  const visible = isAdmin ? data : data.filter(m => m.status !== 'abandoned');
+  const isAdmin = MATCH_PAGE.isAdmin;
 
-  list.innerHTML = visible.map(m => {
+  list.innerHTML = slice.map(m => {
     const isComplete  = m.status === 'complete';
     const isAbandoned = m.status === 'abandoned';
     const isProgress  = !isComplete && !isAbandoned;
@@ -140,7 +156,6 @@ async function loadRecentMatches(isAdmin = false) {
     const score1 = isComplete ? `${m.innings1_net ?? '—'}/${m.innings1_wickets ?? 0}W` : '—';
     const score2 = isComplete ? `${m.innings2_net ?? '—'}/${m.innings2_wickets ?? 0}W` : '—';
 
-    // Admin-only action buttons for in-progress matches
     const adminActions = (isAdmin && isProgress) ? `
       <div class="flex gap-2 mt-3">
         <button onclick="window.resumeMatch('${m.id}')"
@@ -184,6 +199,35 @@ async function loadRecentMatches(isAdmin = false) {
     </details>`;
   }).join('');
 }
+
+async function loadRecentMatches(isAdmin = false) {
+  MATCH_PAGE.isAdmin = isAdmin;
+  const { data, error } = await sb
+    .from('cricket_match_summary')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) {
+    const list = document.getElementById('recentMatchesList');
+    if (list) list.innerHTML = '<p class="text-sm text-gray-400">Could not load matches.</p>';
+    return;
+  }
+
+  // Admins see all incl. abandoned; public sees only non-abandoned
+  MATCH_PAGE.all  = isAdmin ? (data||[]) : (data||[]).filter(m => m.status !== 'abandoned');
+  MATCH_PAGE.page = 1;
+  renderMatchPage();
+}
+
+// Wire pager buttons (runs after DOM ready)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('matchPrev')?.addEventListener('click', () => {
+    if (MATCH_PAGE.page > 1) { MATCH_PAGE.page--; renderMatchPage(); }
+  });
+  document.getElementById('matchNext')?.addEventListener('click', () => {
+    MATCH_PAGE.page++; renderMatchPage();
+  });
+});
 
 // ── Wizard state ──────────────────────────────────────────
 const W = {
