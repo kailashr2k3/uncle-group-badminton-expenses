@@ -109,12 +109,13 @@ async function getUser() {
 }
 
 // ── Public: load recent matches ───────────────────────────
-async function loadRecentMatches() {
+// isAdmin controls whether Resume / Abandon buttons are shown
+async function loadRecentMatches(isAdmin = false) {
   const { data, error } = await sb
     .from('cricket_match_summary')
     .select('*')
     .order('date', { ascending: false })
-    .limit(10);
+    .limit(20);
 
   const list = document.getElementById('recentMatchesList');
   if (error || !data?.length) {
@@ -122,29 +123,48 @@ async function loadRecentMatches() {
     return;
   }
 
-  list.innerHTML = data.map(m => {
-    const isComplete = m.status === 'complete';
-    const resultLine = isComplete
+  // filter out abandoned from public view
+  const visible = isAdmin ? data : data.filter(m => m.status !== 'abandoned');
+
+  list.innerHTML = visible.map(m => {
+    const isComplete  = m.status === 'complete';
+    const isAbandoned = m.status === 'abandoned';
+    const isProgress  = !isComplete && !isAbandoned;
+
+    const statusBadge = isComplete
       ? `<span class="font-semibold text-green-700">🏆 ${m.winner_team} won</span>`
-      : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`;
+      : isAbandoned
+        ? `<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Abandoned</span>`
+        : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`;
 
     const score1 = isComplete ? `${m.innings1_net ?? '—'}/${m.innings1_wickets ?? 0}W` : '—';
     const score2 = isComplete ? `${m.innings2_net ?? '—'}/${m.innings2_wickets ?? 0}W` : '—';
 
-    return `<details class="match-card bg-white rounded-2xl shadow overflow-hidden">
+    // Admin-only action buttons for in-progress matches
+    const adminActions = (isAdmin && isProgress) ? `
+      <div class="flex gap-2 mt-3">
+        <button onclick="window.resumeMatch('${m.id}')"
+          class="flex-1 text-xs bg-green-700 text-white rounded-xl py-2 font-semibold hover:bg-green-800">
+          ▶ Resume
+        </button>
+        <button onclick="window.abandonMatch('${m.id}')"
+          class="flex-1 text-xs bg-red-50 text-red-600 border border-red-200 rounded-xl py-2 font-medium hover:bg-red-100">
+          ✕ Abandon
+        </button>
+      </div>` : '';
+
+    return `<details class="match-card bg-white rounded-2xl shadow overflow-hidden ${isAbandoned?'opacity-50':''}">
       <summary class="p-4 cursor-pointer list-none">
         <div class="flex items-center justify-between">
           <div>
             <div class="font-semibold text-sm">${m.team1_name} vs ${m.team2_name}</div>
             <div class="text-xs text-gray-400 mt-0.5">${m.date} · ${m.overs} overs</div>
           </div>
-          <div class="text-right">
-            ${resultLine}
-          </div>
+          <div class="text-right">${statusBadge}</div>
         </div>
       </summary>
       <div class="px-4 pb-4 border-t border-gray-100 pt-3">
-        <div class="grid grid-cols-2 gap-3">
+        ${isComplete ? `<div class="grid grid-cols-2 gap-3">
           <div class="bg-gray-50 rounded-xl p-3 text-center">
             <div class="text-xs text-gray-500 mb-1">${m.team1_name}</div>
             <div class="text-xl font-bold">${score1}</div>
@@ -155,7 +175,8 @@ async function loadRecentMatches() {
             <div class="text-xl font-bold">${score2}</div>
             <div class="text-xs text-gray-400">${m.overs} overs</div>
           </div>
-        </div>
+        </div>` : `<p class="text-xs text-gray-400">Status: ${m.status} · ${m.overs} overs · −${m.wicket_penalty} per wicket</p>`}
+        ${adminActions}
         <div class="mt-3">
           <a href="stats.html" class="text-xs text-blue-600 hover:underline">View player stats →</a>
         </div>
@@ -885,6 +906,197 @@ async function writeBall({ type, runs, extra, batsmanName }) {
   });
 }
 
+// ── Abandon match ────────────────────────────────────────
+window.abandonMatch = async (matchId) => {
+  if (!confirm('Abandon this match? It will be hidden from public view but data is kept.')) return;
+  await sb.from('cricket_matches')
+    .update({ status: 'abandoned' })
+    .eq('id', matchId);
+  sessionStorage.removeItem('activeCricketMatchId');
+  // refresh list — check if admin panel is open
+  const user = await getUser();
+  loadRecentMatches(!!user);
+};
+
+// ── Resume match — reconstruct W from Supabase ────────────
+window.resumeMatch = async (matchId) => {
+  const btn = event.target;
+  btn.textContent = 'Loading…'; btn.disabled = true;
+
+  try {
+    // 1. Fetch match record
+    const { data: match } = await sb
+      .from('cricket_matches')
+      .select('*')
+      .eq('id', matchId)
+      .single();
+    if (!match) throw new Error('Match not found');
+
+    // 2. Fetch squads
+    const { data: squads } = await sb
+      .from('cricket_squads')
+      .select('team, player_id, guest_name, sort_order, players(id,name)')
+      .eq('match_id', matchId)
+      .order('sort_order');
+
+    const sq1 = (squads||[]).filter(s=>s.team===1)
+      .map(s => s.player_id
+        ? { id: s.players.id, name: s.players.name }
+        : { id: null, name: s.guest_name });
+    const sq2 = (squads||[]).filter(s=>s.team===2)
+      .map(s => s.player_id
+        ? { id: s.players.id, name: s.players.name }
+        : { id: null, name: s.guest_name });
+
+    // 3. Fetch all overs + balls
+    const { data: overs } = await sb
+      .from('cricket_overs')
+      .select('*, cricket_balls(*), players!cricket_overs_bowler_id_fkey(name)')
+      .eq('match_id', matchId)
+      .order('innings').order('over_number');
+
+    // 4. Reconstruct scoring state
+    const rebuildInnings = (inningsOvers) => {
+      let score = 0, penalties = 0, wickets = 0;
+      const batsmanStats = {}, bowlerStats = {};
+
+      for (const ov of inningsOvers) {
+        const bowlerName = ov.players?.name || ov.bowler_guest || 'Unknown';
+        const bs = bowlerStats[bowlerName] || { overs:0, runs:0, wickets:0 };
+
+        const balls = (ov.cricket_balls || []).sort((a,b)=>a.ball_number-b.ball_number);
+        let ovRuns = 0, ovWkts = 0;
+
+        for (const b of balls) {
+          // batsman name from joined player or guest
+          // We store as guest in batsmanStats key
+          const bName = b.batsman_guest || 'Unknown';
+          const bat = batsmanStats[bName] || { runs:0, balls:0, wickets:0 };
+          if (!b.extra_type) {
+            bat.balls++;
+            bat.runs += Number(b.runs || 0);
+            ovRuns   += Number(b.runs || 0);
+          } else {
+            ovRuns += Number(b.runs || 0); // wide/nb still score
+            score  += Number(b.runs || 0);
+          }
+          if (b.is_wicket) {
+            bat.wickets++; wickets++;
+            penalties += match.wicket_penalty;
+            ovWkts++;
+          }
+          if (!b.extra_type) score += Number(b.runs || 0);
+          batsmanStats[bName] = bat;
+        }
+
+        bs.overs++; bs.runs += ovRuns; bs.wickets += ovWkts;
+        bowlerStats[bowlerName] = bs;
+      }
+
+      const lastOv = inningsOvers[inningsOvers.length - 1];
+      return {
+        score, penalties, wickets,
+        net: score - penalties,
+        overNum: lastOv ? lastOv.over_number + 1 : 1,
+        batsmanStats, bowlerStats,
+        gross: score,
+      };
+    };
+
+    const inn1Overs = (overs||[]).filter(o=>o.innings===1);
+    const inn2Overs = (overs||[]).filter(o=>o.innings===2);
+
+    // 5. Rebuild W
+    W.matchId   = matchId;
+    W.sessionId = match.session_id;
+    W.team1     = match.team1_name;
+    W.team2     = match.team2_name;
+    W.overs     = match.overs;
+    W.penalty   = match.wicket_penalty;
+    W.squad1    = sq1;
+    W.squad2    = sq2;
+
+    if (match.status === 'innings1' || match.status === 'setup') {
+      const state = rebuildInnings(inn1Overs);
+      W.innings = 1;
+      W.score        = state.score;
+      W.penalties    = state.penalties;
+      W.wickets      = state.wickets;
+      W.overNum      = state.overNum;
+      W.balls        = [];
+      W.allOvers     = inn1Overs.map(o=>({
+        num: o.over_number,
+        bowler: o.players?.name || o.bowler_guest || 'Unknown',
+        runs: o.runs_scored
+      }));
+      W.batsmanStats = state.batsmanStats;
+      W.bowlerStats  = state.bowlerStats;
+      W.currentBowler = fieldingSquad()[0]?.name || '';
+      W.inn1 = null;
+
+      sessionStorage.setItem('activeCricketMatchId', matchId);
+      document.getElementById('wizardContainer').classList.remove('hidden');
+      setStep(2);
+      openPairModal(false);
+
+    } else if (match.status === 'break') {
+      const state1 = rebuildInnings(inn1Overs);
+      W.inn1 = {
+        net: match.innings1_net ?? state1.net,
+        gross: match.innings1_gross ?? state1.gross,
+        wickets: match.innings1_wickets ?? state1.wickets,
+        penalties: match.innings1_penalty ?? state1.penalties,
+        overNum: Math.min(state1.overNum - 1, match.overs),
+        batsmanStats: state1.batsmanStats,
+        bowlerStats: state1.bowlerStats,
+      };
+      W.innings = 2;
+      resetScoringState();
+      W.currentBowler = fieldingSquad()[0]?.name || '';
+      sessionStorage.setItem('activeCricketMatchId', matchId);
+      document.getElementById('wizardContainer').classList.remove('hidden');
+      setStep(3);
+
+    } else if (match.status === 'innings2') {
+      const state1 = rebuildInnings(inn1Overs);
+      W.inn1 = {
+        net: match.innings1_net ?? state1.net,
+        gross: match.innings1_gross ?? state1.gross,
+        wickets: match.innings1_wickets ?? state1.wickets,
+        penalties: match.innings1_penalty ?? state1.penalties,
+        overNum: Math.min(state1.overNum - 1, match.overs),
+        batsmanStats: state1.batsmanStats,
+        bowlerStats: state1.bowlerStats,
+      };
+      const state2 = rebuildInnings(inn2Overs);
+      W.innings = 2;
+      W.score        = state2.score;
+      W.penalties    = state2.penalties;
+      W.wickets      = state2.wickets;
+      W.overNum      = state2.overNum;
+      W.balls        = [];
+      W.allOvers     = inn2Overs.map(o=>({
+        num: o.over_number,
+        bowler: o.players?.name || o.bowler_guest || 'Unknown',
+        runs: o.runs_scored
+      }));
+      W.batsmanStats = state2.batsmanStats;
+      W.bowlerStats  = state2.bowlerStats;
+      W.currentBowler = fieldingSquad()[0]?.name || '';
+      sessionStorage.setItem('activeCricketMatchId', matchId);
+      document.getElementById('wizardContainer').classList.remove('hidden');
+      setStep(4);
+      openPairModal(false);
+    }
+
+  } catch(e) {
+    console.error('Resume failed:', e);
+    alert('Could not resume match: ' + e.message);
+  } finally {
+    btn.textContent = '▶ Resume'; btn.disabled = false;
+  }
+};
+
 // ── Finish innings ────────────────────────────────────────
 async function finishInnings() {
   const net = netScore();
@@ -952,8 +1164,28 @@ function renderAdminMount(user) {
     await sb.auth.signOut();
     document.getElementById('adminMount').innerHTML = '';
     document.getElementById('adminToggle').textContent = 'Admin';
+    adminPanelOpen = false;
     renderSignInPrompt();
   };
+
+  // Refresh matches with admin actions visible
+  loadRecentMatches(true);
+
+  // Check if there's an in-progress match from sessionStorage
+  const savedMatchId = sessionStorage.getItem('activeCricketMatchId');
+  if (savedMatchId) {
+    const banner = document.createElement('div');
+    banner.className = 'bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-center justify-between';
+    banner.innerHTML = `
+      <div>
+        <div class="text-xs font-semibold text-amber-800">Match in progress</div>
+        <div class="text-xs text-amber-600 mt-0.5">You were scoring a match. Resume where you left off?</div>
+      </div>
+      <button id="quickResumeBtn" class="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-700 ml-3">Resume →</button>`;
+    const adminSec = document.getElementById('adminSection');
+    adminSec.insertBefore(banner, adminSec.firstChild);
+    document.getElementById('quickResumeBtn').onclick = () => window.resumeMatch(savedMatchId);
+  }
 }
 
 function renderSignInPrompt() {
@@ -1009,7 +1241,8 @@ sb.auth.onAuthStateChange(async (event, session) => {
 // ── Better error handling for loadRecentMatches ────────────
 async function safeLoadRecentMatches() {
   try {
-    await loadRecentMatches();
+    const user = await getUser();
+    await loadRecentMatches(!!user);
   } catch(e) {
     document.getElementById('recentMatchesList').innerHTML =
       '<p class="text-sm text-gray-400">Could not load matches. Run the cricket_schema.sql first.</p>';
