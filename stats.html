@@ -188,7 +188,7 @@ function renderBatting() {
                 <td class="px-3 py-2.5 text-right text-amber-600">${r.fours||0}</td>
                 <td class="px-3 py-2.5 text-right text-purple-600">${r.sixes||0}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.times_out||0}</td>
-              </tr>`; }).join('')}
+              </tr>`}).join('')}
           </tbody>
         </table>
       </div>
@@ -214,8 +214,8 @@ function renderBowling() {
             <th class="text-right px-3 py-2">NB</th>
           </tr></thead>
           <tbody>
-            ${sorted.map(r => `
-              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${i})">
+            ${sorted.map(r => { const pidx = registerPlayer(r.player_name); return `
+              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${pidx})">
                 <td class="px-3 py-2.5">
                   <div class="flex items-center gap-2">
                     <div class="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">${ini(r.player_name)}</div>
@@ -229,7 +229,7 @@ function renderBowling() {
                 <td class="px-3 py-2.5 text-right font-medium">${Number(r.economy||0).toFixed(2)}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.wides||0}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.no_balls||0}</td>
-              </tr>`; }).join('')}
+              </tr>`}).join('')}
           </tbody>
         </table>
       </div>
