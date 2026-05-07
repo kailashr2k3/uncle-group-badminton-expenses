@@ -721,11 +721,10 @@ function resetWizard() {
 }
 
 // ── Global helpers (called from inline onclick) ───────────
-window.W          = W;
-window.setStep    = setStep;
-window.openPairModal = openPairModal;
-window.keepPair   = keepPair;
-window.recordBall = recordBall;
+// openPairModal / keepPair / recordBall are defined as window.X = ()=>{}
+// directly where they appear below — no need to alias here.
+window.W       = W;
+window.setStep = setStep;
 window.adj = (key, delta) => {
   if (key==='overs')   W.overs   = Math.max(1, Math.min(50, W.overs+delta));
   if (key==='penalty') W.penalty = Math.max(0, W.penalty+delta);
