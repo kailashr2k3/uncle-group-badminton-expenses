@@ -1164,174 +1164,183 @@ window.resumeMatch = async (matchId) => {
   try {
     await ensureAdminMounted();
 
-    // 1. Fetch match record
-    const { data: match } = await sb
-      .from('cricket_matches')
-      .select('*')
-      .eq('id', matchId)
-      .single();
-    if (!match) throw new Error('Match not found');
+    // 1. Match record
+    const { data: match, error: mErr } = await sb
+      .from('cricket_matches').select('*').eq('id', matchId).single();
+    if (mErr || !match) throw new Error('Match not found');
 
-    // 2. Fetch squads
+    // 2. Squads
     const { data: squads } = await sb
       .from('cricket_squads')
-      .select('team, player_id, guest_name, sort_order, players(id,name)')
-      .eq('match_id', matchId)
-      .order('sort_order');
+      .select('team, player_id, guest_name, sort_order')
+      .eq('match_id', matchId).order('sort_order');
 
-    const sq1 = (squads||[]).filter(s=>s.team===1)
-      .map(s => s.player_id
-        ? { id: s.players.id, name: s.players.name }
-        : { id: null, name: s.guest_name });
-    const sq2 = (squads||[]).filter(s=>s.team===2)
-      .map(s => s.player_id
-        ? { id: s.players.id, name: s.players.name }
-        : { id: null, name: s.guest_name });
+    // Resolve player names via separate query (no FK join)
+    const playerNameMap = {};
+    const squadUUIDs = (squads||[]).filter(s=>s.player_id).map(s=>s.player_id);
+    if (squadUUIDs.length) {
+      const { data: pRows } = await sb.from('players').select('id,name').in('id', squadUUIDs);
+      (pRows||[]).forEach(p => { playerNameMap[p.id] = p.name; });
+    }
 
-    // 3. Fetch all overs + balls
-    const { data: overs } = await sb
+    const buildSquad = (team) => (squads||[])
+      .filter(s => s.team === team)
+      .map(s => s.player_id
+        ? { id: s.player_id,  name: playerNameMap[s.player_id] || 'Unknown' }
+        : { id: null, name: s.guest_name || 'Guest' });
+
+    const sq1 = buildSquad(1);
+    const sq2 = buildSquad(2);
+
+    // 3. Overs (no FK join syntax)
+    const { data: overs, error: ovErr } = await sb
       .from('cricket_overs')
-      .select('*, cricket_balls(*), players!cricket_overs_bowler_id_fkey(name)')
+      .select('id, innings, over_number, runs_scored, wickets, bowler_id, bowler_guest')
       .eq('match_id', matchId)
       .order('innings').order('over_number');
+    if (ovErr) throw new Error('Could not load overs: ' + ovErr.message);
 
-    // 4. Reconstruct scoring state
+    // 4. Balls
+    const overIds = (overs||[]).map(o => o.id);
+    let balls = [];
+    if (overIds.length) {
+      const { data: bRows } = await sb
+        .from('cricket_balls')
+        .select('id, over_id, runs, extra_type, is_wicket, batsman_id, batsman_guest')
+        .in('over_id', overIds);
+      balls = bRows || [];
+    }
+
+    // 5. Resolve all player UUIDs (bowlers + batsmen)
+    const allUUIDs = [
+      ...(overs||[]).filter(o=>o.bowler_id).map(o=>o.bowler_id),
+      ...balls.filter(b=>b.batsman_id).map(b=>b.batsman_id),
+    ];
+    const uniqueUUIDs = [...new Set(allUUIDs.filter(Boolean))];
+    if (uniqueUUIDs.length) {
+      const { data: pRows } = await sb.from('players').select('id,name').in('id', uniqueUUIDs);
+      (pRows||[]).forEach(p => { playerNameMap[p.id] = p.name; });
+    }
+
+    const bowlerNameFor  = o => playerNameMap[o.bowler_id]  || o.bowler_guest  || 'Unknown';
+    const batsmanNameFor = b => playerNameMap[b.batsman_id] || b.batsman_guest || 'Unknown';
+
+    // 6. Rebuild innings — use DB aggregates for score (reliable),
+    //    balls only for per-batsman breakdown
     const rebuildInnings = (inningsOvers) => {
       let score = 0, penalties = 0, wickets = 0;
       const batsmanStats = {}, bowlerStats = {};
 
       for (const ov of inningsOvers) {
-        const bowlerName = ov.players?.name || ov.bowler_guest || 'Unknown';
+        const bowlerName = bowlerNameFor(ov);
+        const ovRuns = Number(ov.runs_scored || 0);
+        const ovWkts = Number(ov.wickets     || 0);
+        score    += ovRuns;
+        penalties += ovWkts * match.wicket_penalty;
+        wickets  += ovWkts;
+
         const bs = bowlerStats[bowlerName] || { overs:0, runs:0, wickets:0 };
-
-        const balls = (ov.cricket_balls || []).sort((a,b)=>a.ball_number-b.ball_number);
-        let ovRuns = 0, ovWkts = 0;
-
-        for (const b of balls) {
-          // batsman name from joined player or guest
-          // We store as guest in batsmanStats key
-          const bName = b.batsman_guest || 'Unknown';
-          const bat = batsmanStats[bName] || { runs:0, balls:0, wickets:0 };
-          if (!b.extra_type) {
-            bat.balls++;
-            bat.runs += Number(b.runs || 0);
-            ovRuns   += Number(b.runs || 0);
-          } else {
-            ovRuns += Number(b.runs || 0); // wide/nb still score
-            score  += Number(b.runs || 0);
-          }
-          if (b.is_wicket) {
-            bat.wickets++; wickets++;
-            penalties += match.wicket_penalty;
-            ovWkts++;
-          }
-          if (!b.extra_type) score += Number(b.runs || 0);
-          batsmanStats[bName] = bat;
-        }
-
         bs.overs++; bs.runs += ovRuns; bs.wickets += ovWkts;
         bowlerStats[bowlerName] = bs;
+
+        // Per-batsman from balls (best-effort)
+        for (const b of balls.filter(b2 => b2.over_id === ov.id)) {
+          const bName = batsmanNameFor(b);
+          const bat = batsmanStats[bName] || { runs:0, balls:0, wickets:0 };
+          if (!b.extra_type) { bat.balls++; bat.runs += Number(b.runs||0); }
+          if (b.is_wicket) bat.wickets++;
+          batsmanStats[bName] = bat;
+        }
       }
 
       const lastOv = inningsOvers[inningsOvers.length - 1];
       return {
         score, penalties, wickets,
-        net: score - penalties,
-        overNum: lastOv ? lastOv.over_number + 1 : 1,
+        net: score - penalties, gross: score,
+        overNum:    lastOv ? lastOv.over_number + 1 : 1,
+        lastBowler: lastOv ? bowlerNameFor(lastOv) : null,
         batsmanStats, bowlerStats,
-        gross: score,
+        allOvers: inningsOvers.map(o => ({
+          num: o.over_number, bowler: bowlerNameFor(o), runs: Number(o.runs_scored||0),
+        })),
       };
     };
 
-    const inn1Overs = (overs||[]).filter(o=>o.innings===1);
-    const inn2Overs = (overs||[]).filter(o=>o.innings===2);
+    const inn1Overs = (overs||[]).filter(o => o.innings === 1);
+    const inn2Overs = (overs||[]).filter(o => o.innings === 2);
 
-    // 5. Rebuild W
-    W.matchId   = matchId;
-    W.sessionId = match.session_id;
-    W.team1     = match.team1_name;
-    W.team2     = match.team2_name;
-    W.overs     = match.overs;
-    W.penalty   = match.wicket_penalty;
-    W.squad1    = sq1;
-    W.squad2    = sq2;
+    // 7. Populate W
+    W.matchId = matchId; W.sessionId = match.session_id;
+    W.team1   = match.team1_name; W.team2 = match.team2_name;
+    W.overs   = match.overs; W.penalty = match.wicket_penalty;
+    W.squad1  = sq1; W.squad2 = sq2;
+    W.pendingBalls = [];
 
-    if (match.status === 'innings1' || match.status === 'setup') {
-      const state = rebuildInnings(inn1Overs);
-      W.innings = 1;
+    const applyInningsState = (state, innings) => {
+      W.innings      = innings;
       W.score        = state.score;
       W.penalties    = state.penalties;
       W.wickets      = state.wickets;
       W.overNum      = state.overNum;
       W.balls        = [];
-      W.allOvers     = inn1Overs.map(o=>({
-        num: o.over_number,
-        bowler: o.players?.name || o.bowler_guest || 'Unknown',
-        runs: o.runs_scored
-      }));
+      W.allOvers     = state.allOvers;
       W.batsmanStats = state.batsmanStats;
       W.bowlerStats  = state.bowlerStats;
-      W.currentBowler = fieldingSquad()[0]?.name || '';
-      W.inn1 = null;
+      W.lastBowler   = state.lastBowler;
+      W.currentBowler     = state.lastBowler || fieldingSquad()[0]?.name || '';
+      W.needsBowlerChange = !!state.lastBowler;
+      W.overJustDone      = state.overNum > 1;
+      W.currentPair       = null;
+      W.lastSnap          = null;
+    };
 
-      sessionStorage.setItem('activeCricketMatchId', matchId);
-      document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(2);
+    // STEPS = ['setup','squads','toss','innings1','break','innings2','result']
+    //           0        1        2       3          4       5          6
+    sessionStorage.setItem('activeCricketMatchId', matchId);
+    document.getElementById('wizardContainer').classList.remove('hidden');
+
+    if (match.status === 'setup' || match.status === 'innings1') {
+      applyInningsState(rebuildInnings(inn1Overs), 1);
+      W.inn1 = null;
+      setStep(3); // innings1
       openPairModal(false);
 
     } else if (match.status === 'break') {
-      const state1 = rebuildInnings(inn1Overs);
+      // inn1 must be set BEFORE resetScoringState clears W vars
+      const s1 = rebuildInnings(inn1Overs);
       W.inn1 = {
-        net: match.innings1_net ?? state1.net,
-        gross: match.innings1_gross ?? state1.gross,
-        wickets: match.innings1_wickets ?? state1.wickets,
-        penalties: match.innings1_penalty ?? state1.penalties,
-        overNum: Math.min(state1.overNum - 1, match.overs),
-        batsmanStats: state1.batsmanStats,
-        bowlerStats: state1.bowlerStats,
+        net:       match.innings1_net     ?? s1.net,
+        gross:     match.innings1_gross   ?? s1.gross,
+        wickets:   match.innings1_wickets ?? s1.wickets,
+        penalties: match.innings1_penalty ?? s1.penalties,
+        overNum:   Math.min(s1.overNum - 1, match.overs),
+        batsmanStats: s1.batsmanStats,
+        bowlerStats:  s1.bowlerStats,
       };
-      W.innings = 2;
       resetScoringState();
+      W.innings       = 2;
       W.currentBowler = fieldingSquad()[0]?.name || '';
-      sessionStorage.setItem('activeCricketMatchId', matchId);
-      document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(3);
+      setStep(4); // break — shows innings break screen
 
     } else if (match.status === 'innings2') {
-      const state1 = rebuildInnings(inn1Overs);
+      const s1 = rebuildInnings(inn1Overs);
       W.inn1 = {
-        net: match.innings1_net ?? state1.net,
-        gross: match.innings1_gross ?? state1.gross,
-        wickets: match.innings1_wickets ?? state1.wickets,
-        penalties: match.innings1_penalty ?? state1.penalties,
-        overNum: Math.min(state1.overNum - 1, match.overs),
-        batsmanStats: state1.batsmanStats,
-        bowlerStats: state1.bowlerStats,
+        net:       match.innings1_net     ?? s1.net,
+        gross:     match.innings1_gross   ?? s1.gross,
+        wickets:   match.innings1_wickets ?? s1.wickets,
+        penalties: match.innings1_penalty ?? s1.penalties,
+        overNum:   Math.min(s1.overNum - 1, match.overs),
+        batsmanStats: s1.batsmanStats,
+        bowlerStats:  s1.bowlerStats,
       };
-      const state2 = rebuildInnings(inn2Overs);
-      W.innings = 2;
-      W.score        = state2.score;
-      W.penalties    = state2.penalties;
-      W.wickets      = state2.wickets;
-      W.overNum      = state2.overNum;
-      W.balls        = [];
-      W.allOvers     = inn2Overs.map(o=>({
-        num: o.over_number,
-        bowler: o.players?.name || o.bowler_guest || 'Unknown',
-        runs: o.runs_scored
-      }));
-      W.batsmanStats = state2.batsmanStats;
-      W.bowlerStats  = state2.bowlerStats;
-      W.currentBowler = fieldingSquad()[0]?.name || '';
-      sessionStorage.setItem('activeCricketMatchId', matchId);
-      document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(5);
+      applyInningsState(rebuildInnings(inn2Overs), 2);
+      setStep(5); // innings2
       openPairModal(false);
     }
 
   } catch(e) {
     console.error('Resume failed:', e);
-    alert('Could not resume match: ' + (e.message || e));
+    alert('Could not resume: ' + (e.message || e));
   } finally {
     if (btn) { btn.textContent = '▶ Resume'; btn.disabled = false; }
   }
