@@ -312,6 +312,10 @@ function tmplSquads() {
   const sq1ids = new Set(W.squad1.map(p=>p.id||p.name));
   const sq2ids = new Set(W.squad2.map(p=>p.id||p.name));
 
+  // Store all players in a registry so onclick only needs a safe integer index
+  // This avoids JSON.stringify inside HTML attributes which breaks on quotes/special chars
+  window.__tileRegistry = window.__tileRegistry || {};
+  let __tileIdx = 0;
   const tileFor = (p) => {
     const key = p.id || p.name;
     const inT1 = sq1ids.has(key);
@@ -326,9 +330,12 @@ function tmplSquads() {
       : inT2
         ? `<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white text-emerald-600 text-xs flex items-center justify-center font-bold border border-emerald-200">2</span>`
         : '';
-    return `<div onclick="window.cycleTile(${JSON.stringify(key)},${JSON.stringify(p.name)},${JSON.stringify(p.id||null)})"
+    // safe integer index — no strings in the onclick attribute
+    const tidx = __tileIdx++;
+    window.__tileRegistry[tidx] = { key, name: p.name, id: p.id || null };
+    return `<div onclick="window.cycleTileByIdx(${tidx})"
       class="relative cursor-pointer border-2 rounded-xl px-3 py-2 text-xs font-medium text-center transition-all select-none ${cls}">
-      ${p.name}${!p.id?'<br><span class="opacity-60 text-xs">guest</span>':''}
+      ${p.name}${!p.id ? '<br><span class="opacity-60" style="font-size:10px">guest</span>' : ''}
       ${badge}
     </div>`;
   };
@@ -714,7 +721,11 @@ function resetWizard() {
 }
 
 // ── Global helpers (called from inline onclick) ───────────
-window.W = W;
+window.W          = W;
+window.setStep    = setStep;
+window.openPairModal = openPairModal;
+window.keepPair   = keepPair;
+window.recordBall = recordBall;
 window.adj = (key, delta) => {
   if (key==='overs')   W.overs   = Math.max(1, Math.min(50, W.overs+delta));
   if (key==='penalty') W.penalty = Math.max(0, W.penalty+delta);
@@ -729,18 +740,19 @@ async function loadRegisteredPlayers() {
 }
 
 // Cycle a player tile: unassigned → team1 → team2 → unassigned
-window.cycleTile = (key, name, id) => {
+// Uses integer index to avoid any strings in HTML onclick attributes
+window.cycleTileByIdx = (tidx) => {
+  const entry = window.__tileRegistry && window.__tileRegistry[tidx];
+  if (!entry) return;
+  const { key, name, id } = entry;
   const inT1 = W.squad1.some(p=>(p.id||p.name)===key);
   const inT2 = W.squad2.some(p=>(p.id||p.name)===key);
   if (!inT1 && !inT2) {
-    // add to team 1
     W.squad1.push({ id: id||null, name });
   } else if (inT1) {
-    // move to team 2
     W.squad1 = W.squad1.filter(p=>(p.id||p.name)!==key);
     W.squad2.push({ id: id||null, name });
   } else {
-    // remove from team 2
     W.squad2 = W.squad2.filter(p=>(p.id||p.name)!==key);
   }
   renderStep();
