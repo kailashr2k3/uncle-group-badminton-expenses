@@ -208,8 +208,8 @@ const W = {
   inn1: null,
 };
 
-const STEPS = ['setup','squads','innings1','break','innings2','result'];
-const STEP_LABELS = ['Match setup','Build squads','Innings 1','Innings break','Innings 2','Result'];
+const STEPS = ['setup','squads','toss','innings1','break','innings2','result'];
+const STEP_LABELS = ['Match setup','Build squads','Toss & order','Innings 1','Innings break','Innings 2','Result'];
 
 function setStep(n) {
   W.step = n;
@@ -261,6 +261,7 @@ function renderStep() {
   const s  = STEPS[W.step];
   if (s === 'setup')    el.innerHTML = tmplSetup();
   else if (s === 'squads')  el.innerHTML = tmplSquads();
+  else if (s === 'toss')     el.innerHTML = tmplToss();
   else if (s === 'innings1' || s === 'innings2') el.innerHTML = tmplScoring();
   else if (s === 'break')   el.innerHTML = tmplBreak();
   else if (s === 'result')  el.innerHTML = tmplResult();
@@ -417,6 +418,38 @@ function tmplSquads() {
   </div>`;
 }
 
+
+// ─── Toss template ────────────────────────────────────────
+function tmplToss() {
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-yellow-600 rounded-xl p-4 text-white text-center">
+      <div class="text-3xl mb-1">🪙</div>
+      <div class="font-bold text-base">Toss</div>
+      <div class="text-xs opacity-80 mt-0.5">Who bats first?</div>
+    </div>
+    <div class="flex flex-col gap-2">
+      <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer hover:bg-blue-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+        <input type="radio" name="tossWinner" value="1" class="accent-blue-600"/>
+        <div>
+          <div class="font-semibold text-sm">${W.team1} bats first</div>
+          <div class="text-xs text-gray-400">${W.squad1.length} players · ${W.team2} chases</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer hover:bg-emerald-50 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
+        <input type="radio" name="tossWinner" value="2" class="accent-emerald-600"/>
+        <div>
+          <div class="font-semibold text-sm">${W.team2} bats first</div>
+          <div class="text-xs text-gray-400">${W.squad2.length} players · ${W.team1} chases</div>
+        </div>
+      </label>
+    </div>
+    <button id="tossConfirmBtn" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800">
+      Confirm & Start Innings →
+    </button>
+    <button onclick="window.setStep(1)" class="text-xs text-gray-400 text-center hover:text-gray-600">← Back to squads</button>
+  </div>`;
+}
+
 // ─── Scoring template ─────────────────────────────────────
 function tmplScoring() {
   const isChase = W.innings === 2;
@@ -490,42 +523,64 @@ function tmplScoring() {
     </div>
 
     <div class="p-4 flex flex-col gap-3">
-      <!-- between-over prompt -->
-      ${W.overJustDone&&!inningsOver?`<div class="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col gap-3">
+      <!-- between-over prompt — chip selectors for bowler + pair -->
+      ${W.overJustDone&&!inningsOver?`<div class="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col gap-4">
+        <div class="text-sm font-semibold text-teal-800">Over ${W.overNum-1} done — pick bowler & pair</div>
+
+        <!-- Bowler chips -->
         <div>
-          <div class="text-sm font-semibold text-teal-800">Over ${W.overNum-1} complete — set next over</div>
-          <div class="text-xs text-teal-600 mt-0.5">Confirm pair and bowler before continuing</div>
-        </div>
-        <!-- Bowler selector — highlighted in red if same as last over -->
-        <div>
-          <label class="text-xs font-medium text-gray-600 mb-1 block">
+          <div class="text-xs font-medium text-gray-600 mb-1.5">
             Bowler — ${fieldingTeam()}
-            ${W.needsBowlerChange ? '<span class="text-red-500 ml-1">⚠ Must change bowler</span>' : ''}
-          </label>
-          <select id="bowlerSelOver" onchange="window.W.currentBowler=this.value;window.W.needsBowlerChange=(this.value===window.W.lastBowler);renderStep();"
-            class="w-full border-2 rounded-lg px-3 py-2 text-sm bg-white ${W.needsBowlerChange ? 'border-red-400' : 'border-teal-300'}">
-            ${fieldingSquad().map(p=>{
-              const name=p.name;
-              const st=W.bowlerStats[name];
-              const isLast = name===W.lastBowler;
-              return '<option value="'+name+'" '+(name===W.currentBowler?'selected':'')+'>'+name+(isLast?' (prev over)':'')+(st?'  ·  '+st.overs+'ov '+st.runs+'r '+st.wickets+'w':'')+'</option>';
-            }).join('')}
-          </select>
-          ${W.needsBowlerChange?'<p class="text-xs text-red-500 mt-1">Same bowler cannot bowl consecutive overs. Pick someone else.</p>':''}
-        </div>
-        <!-- Pair -->
-        <div>
-          <div class="text-xs font-medium text-gray-600 mb-1">Batting pair</div>
-          <div class="text-xs text-teal-700 font-medium mb-2">${pair?.p1?.name} & ${pair?.p2?.name}</div>
-          <div class="flex gap-2">
-            <button onclick="window.keepPairAndBowler()" class="flex-1 text-xs bg-teal-600 text-white border border-teal-600 rounded-xl py-2 font-medium hover:bg-teal-700 disabled:opacity-40" ${W.needsBowlerChange?'disabled':''}>
-              ✓ Confirm & start over
-            </button>
-            <button onclick="window.openPairModal(true)" class="text-xs bg-white text-gray-600 border border-gray-200 rounded-xl py-2 px-3 hover:bg-gray-50">
-              Change pair
-            </button>
+            ${W.needsBowlerChange?'<span class="text-red-500 ml-1 font-semibold">⚠ must change</span>':''}
           </div>
+          <div class="flex flex-wrap gap-2">
+            ${fieldingSquad().map((p,i)=>{
+              const name=p.name;
+              const isSelected = name===W.currentBowler;
+              const isLast = name===W.lastBowler;
+              const st = W.bowlerStats[name];
+              const statStr = st ? st.overs+'ov '+st.wickets+'w' : '';
+              const cls = isLast
+                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                : isSelected
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50';
+              const tidx = 1000+i;
+              window.__tileRegistry = window.__tileRegistry||{};
+              window.__tileRegistry[tidx] = { name, isLast };
+              return '<button onclick="window.selectBowler('+tidx+')" '+(isLast?'disabled':'')+' class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all '+cls+'">'+name+(isLast?' ✗':'')+(statStr?' · '+statStr:'')+'</button>';
+            }).join('')}
+          </div>
+          ${W.needsBowlerChange?'<p class="text-xs text-red-500 mt-1">Same bowler two overs in a row not allowed.</p>':''}
         </div>
+
+        <!-- Batting pair chips -->
+        <div>
+          <div class="text-xs font-medium text-gray-600 mb-1.5">Batting pair — ${battingTeam()}</div>
+          <div class="flex flex-wrap gap-2">
+            ${battingSquad().map((p,i)=>{
+              const name=p.name;
+              const isP1 = pair?.p1?.name===name;
+              const isP2 = pair?.p2?.name===name;
+              const cls = isP1
+                ? 'bg-blue-600 text-white border-blue-600'
+                : isP2
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400';
+              const label = isP1 ? name+' ★' : isP2 ? name+' ·' : name;
+              const tidx = 2000+i;
+              window.__tileRegistry[tidx] = { name, id: p.id||null };
+              return '<button onclick="window.cyclePairChip('+tidx+')" class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all '+cls+'">'+label+'</button>';
+            }).join('')}
+          </div>
+          <div class="text-xs text-gray-400 mt-1">Tap to set striker (★) → non-striker (·) → remove</div>
+        </div>
+
+        <button onclick="window.keepPairAndBowler()"
+          class="w-full text-sm bg-teal-600 text-white rounded-xl py-2.5 font-semibold hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          ${W.needsBowlerChange||!pair?.p1||!pair?.p2?'disabled':''}>
+          ✓ Start Over ${W.overNum}
+        </button>
       </div>`:''}
 
       <!-- current over -->
@@ -544,13 +599,19 @@ function tmplScoring() {
         ${batsmenHtml}
       </div>
 
-      <!-- bowler -->
-      <div>
-        <label class="text-xs font-medium text-gray-500 mb-1 block">Bowler — ${fieldingTeam()}</label>
-        <select id="bowlerSel" onchange="window.W.currentBowler=this.value" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-          ${bowlerOpts}
-        </select>
-      </div>
+      <!-- bowler chips (mid-over) -->
+      ${!W.overJustDone?`<div>
+        <div class="text-xs font-medium text-gray-500 mb-1.5">Bowler — ${fieldingTeam()}</div>
+        <div class="flex flex-wrap gap-1.5">
+          ${fieldingSquad().map((p,i)=>{
+            const name=p.name; const st=W.bowlerStats[name];
+            const sel=name===W.currentBowler;
+            const cls=sel?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300';
+            const tidx=3000+i; window.__tileRegistry=window.__tileRegistry||{}; window.__tileRegistry[tidx]={name};
+            return '<button onclick="window.selectBowlerMid('+tidx+')" class="text-xs px-2.5 py-1 rounded-full border font-medium '+cls+'">'+name+(st?' '+st.overs+'ov':'')+'</button>';
+          }).join('')}
+        </div>
+      </div>`:''}
 
       <!-- run buttons -->
       <div class="grid grid-cols-3 gap-2">
@@ -705,7 +766,23 @@ function wireStep(step) {
       W.innings = 1;
       W.currentBowler = fieldingSquad()[0]?.name || '';
       document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(2);
+      setStep(2); // toss
+    };
+  }
+  if (step==='toss') {
+    document.getElementById('tossConfirmBtn').onclick = () => {
+      const batFirst = document.querySelector('input[name="tossWinner"]:checked')?.value;
+      if (!batFirst) return alert('Select who bats first');
+      if (batFirst === '2') {
+        // swap: team2 bats first = team2 is now innings1 batting
+        // We swap squad1/squad2 and team1/team2 labels so innings1 always = first bat
+        [W.squad1, W.squad2] = [W.squad2, W.squad1];
+        [W.team1, W.team2]   = [W.team2, W.team1];
+      }
+      resetScoringState();
+      W.innings = 1;
+      W.currentBowler = fieldingSquad()[0]?.name || '';
+      setStep(3); // innings1
       openPairModal(false);
     };
   }
@@ -721,7 +798,7 @@ function wireStep(step) {
       W.innings = 2;
       W.currentBowler = fieldingSquad()[0]?.name || '';
       sb.from('cricket_matches').update({ status:'innings2' }).eq('id',W.matchId);
-      setStep(4);
+      setStep(5);
       openPairModal(false);
     };
   }
@@ -823,6 +900,53 @@ window.openPairModal = (allowKeep) => {
   document.getElementById('pairModal').classList.remove('hidden');
 };
 
+
+// ── Bowler chip selector (between-over panel) ─────────────
+window.selectBowler = (tidx) => {
+  const entry = window.__tileRegistry[tidx];
+  if (!entry || entry.isLast) return; // can't pick last over's bowler
+  W.currentBowler = entry.name;
+  W.needsBowlerChange = (entry.name === W.lastBowler);
+  renderStep();
+};
+
+// ── Bowler chip selector (mid-over panel) ─────────────────
+window.selectBowlerMid = (tidx) => {
+  const entry = window.__tileRegistry[tidx];
+  if (!entry) return;
+  W.currentBowler = entry.name;
+  renderStep();
+};
+
+// ── Pair chip cycling (between-over panel) ────────────────
+// Tap unassigned → striker (★) → non-striker (·) → unassigned
+window.cyclePairChip = (tidx) => {
+  const entry = window.__tileRegistry[tidx];
+  if (!entry) return;
+  const { name, id } = entry;
+  const player = { id: id||null, name };
+  const isP1 = W.currentPair?.p1?.name === name;
+  const isP2 = W.currentPair?.p2?.name === name;
+
+  if (!isP1 && !isP2) {
+    // not in pair — add as striker if no striker, else non-striker
+    if (!W.currentPair?.p1) {
+      W.currentPair = { p1: player, p2: W.currentPair?.p2 || null };
+    } else if (!W.currentPair?.p2) {
+      W.currentPair = { p1: W.currentPair.p1, p2: player };
+    } else {
+      // pair full — replace striker
+      W.currentPair = { p1: player, p2: W.currentPair.p2 };
+    }
+  } else if (isP1) {
+    // is striker → promote to non-striker, clear striker
+    W.currentPair = { p1: W.currentPair.p2, p2: player };
+  } else {
+    // is non-striker → remove
+    W.currentPair = { p1: W.currentPair.p1, p2: null };
+  }
+  renderStep();
+};
 window.keepPair = () => {
   W.overJustDone = false;
   renderStep();
@@ -969,11 +1093,26 @@ window.abandonMatch = async (matchId) => {
 };
 
 // ── Resume match — reconstruct W from Supabase ────────────
+// Ensure the admin panel HTML is in the DOM before resumeMatch touches it.
+// This covers the case where Resume is clicked from the public matches list
+// before the admin panel has been opened.
+async function ensureAdminMounted() {
+  if (document.getElementById('wizardContainer')) return; // already there
+  const user = await getUser();
+  if (!user) throw new Error('You must be signed in to resume a match.');
+  renderAdminMount(user);
+  // renderAdminMount is synchronous DOM injection — after it returns the
+  // wizardContainer element exists. Give the browser one frame to paint.
+  await new Promise(r => setTimeout(r, 0));
+}
+
 window.resumeMatch = async (matchId) => {
-  const btn = event.target;
-  btn.textContent = 'Loading…'; btn.disabled = true;
+  const btn = event?.target;
+  if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
 
   try {
+    await ensureAdminMounted();
+
     // 1. Fetch match record
     const { data: match } = await sb
       .from('cricket_matches')
@@ -1135,15 +1274,15 @@ window.resumeMatch = async (matchId) => {
       W.currentBowler = fieldingSquad()[0]?.name || '';
       sessionStorage.setItem('activeCricketMatchId', matchId);
       document.getElementById('wizardContainer').classList.remove('hidden');
-      setStep(4);
+      setStep(5);
       openPairModal(false);
     }
 
   } catch(e) {
     console.error('Resume failed:', e);
-    alert('Could not resume match: ' + e.message);
+    alert('Could not resume match: ' + (e.message || e));
   } finally {
-    btn.textContent = '▶ Resume'; btn.disabled = false;
+    if (btn) { btn.textContent = '▶ Resume'; btn.disabled = false; }
   }
 };
 
@@ -1199,6 +1338,7 @@ function renderAdminMount(user) {
           <div id="dot3" class="step-dot pending"></div>
           <div id="dot4" class="step-dot pending"></div>
           <div id="dot5" class="step-dot pending"></div>
+          <div id="dot6" class="step-dot pending"></div>
           <span id="wizardStepLabel" class="text-xs text-gray-400 ml-2">Step 1 / 6</span>
         </div>
         <div id="wizardStep"></div>
