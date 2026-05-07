@@ -173,8 +173,8 @@ function renderBatting() {
             ${colHdr('times_out','Outs')}
           </tr></thead>
           <tbody>
-            ${sorted.map((r,i) => `
-              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${JSON.stringify(r.player_name)})">
+            ${sorted.map((r,i) => { const pidx = registerPlayer(r.player_name); return `
+              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${pidx})">
                 <td class="px-3 py-2.5">
                   <div class="flex items-center gap-2">
                     <div class="w-7 h-7 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">${ini(r.player_name)}</div>
@@ -188,7 +188,7 @@ function renderBatting() {
                 <td class="px-3 py-2.5 text-right text-amber-600">${r.fours||0}</td>
                 <td class="px-3 py-2.5 text-right text-purple-600">${r.sixes||0}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.times_out||0}</td>
-              </tr>`).join('')}
+              </tr>`; }).join('')}
           </tbody>
         </table>
       </div>
@@ -215,7 +215,7 @@ function renderBowling() {
           </tr></thead>
           <tbody>
             ${sorted.map(r => `
-              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${JSON.stringify(r.player_name)})">
+              <tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPlayerDrawer(${i})">
                 <td class="px-3 py-2.5">
                   <div class="flex items-center gap-2">
                     <div class="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">${ini(r.player_name)}</div>
@@ -229,7 +229,7 @@ function renderBowling() {
                 <td class="px-3 py-2.5 text-right font-medium">${Number(r.economy||0).toFixed(2)}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.wides||0}</td>
                 <td class="px-3 py-2.5 text-right text-orange-500">${r.no_balls||0}</td>
-              </tr>`).join('')}
+              </tr>`; }).join('')}
           </tbody>
         </table>
       </div>
@@ -242,31 +242,171 @@ function renderMatches() {
     document.getElementById('matchesTable').innerHTML = '<p class="text-sm text-gray-400">No matches yet.</p>';
     return;
   }
-  document.getElementById('matchesTable').innerHTML = matches.map(m => {
-    const complete = m.status==='complete';
+  document.getElementById('matchesTable').innerHTML = matches.map((m,i) => {
+    const complete  = m.status==='complete';
     const s1 = complete ? `${m.innings1_net??'—'}/${m.innings1_wickets??0}W` : '—';
     const s2 = complete ? `${m.innings2_net??'—'}/${m.innings2_wickets??0}W` : '—';
-    return `<div class="bg-white rounded-2xl shadow p-4 mb-3">
-      <div class="flex items-start justify-between">
-        <div>
-          <div class="font-semibold text-sm">${m.team1_name} vs ${m.team2_name}</div>
-          <div class="text-xs text-gray-400 mt-0.5">${m.date} · ${m.overs} overs · −${m.wicket_penalty} pen</div>
+    return `<details class="bg-white rounded-2xl shadow mb-3 overflow-hidden">
+      <summary class="p-4 cursor-pointer list-none">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="font-semibold text-sm">${m.team1_name} vs ${m.team2_name}</div>
+            <div class="text-xs text-gray-400 mt-0.5">${m.date} · ${m.overs} overs · −${m.wicket_penalty} pen</div>
+          </div>
+          <div class="text-right ml-2 flex-shrink-0">
+            ${complete
+              ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">🏆 ${m.winner_team} won</span>`
+              : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`}
+            ${complete ? `<div class="text-xs text-gray-500 mt-1">${s1} vs ${s2}</div>` : ''}
+          </div>
         </div>
-        ${complete?`<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">🏆 ${m.winner_team}</span>`:
-          `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`}
+      </summary>
+      <div class="border-t border-gray-100 px-4 pb-4 pt-3" id="mcard-${m.id}">
+        <div class="text-xs text-gray-400 text-center py-3">Loading scorecard…</div>
       </div>
-      ${complete?`<div class="grid grid-cols-2 gap-2 mt-3">
-        <div class="bg-gray-50 rounded-xl p-2.5 text-center">
-          <div class="text-xs text-gray-500">${m.team1_name}</div>
-          <div class="font-bold text-lg mt-0.5">${s1}</div>
-        </div>
-        <div class="bg-gray-50 rounded-xl p-2.5 text-center">
-          <div class="text-xs text-gray-500">${m.team2_name}</div>
-          <div class="font-bold text-lg mt-0.5">${s2}</div>
-        </div>
-      </div>`:''}
-    </div>`;
+    </details>`;
   }).join('');
+
+  // Wire lazy-load for each match details element
+  document.querySelectorAll('#matchesTable details').forEach((el, i) => {
+    el.addEventListener('toggle', () => {
+      if (el.open) loadMatchScorecard(matches[i].id);
+    });
+  });
+}
+
+// ── Fetch and render full match scorecard ──
+async function loadMatchScorecard(matchId) {
+  const mount = document.getElementById('mcard-'+matchId);
+  if (!mount || mount.dataset.loaded) return;
+  mount.dataset.loaded = '1';
+
+  const m = matches.find(x=>x.id===matchId)||{};
+  if (m.status !== 'complete') {
+    mount.innerHTML = `<p class="text-xs text-gray-400">Match not complete yet.</p>`;
+    return;
+  }
+
+  // Fetch overs + balls for this match
+  // Fetch overs for this match
+  const ovRes = await sb.from('cricket_overs')
+    .select('id,innings,over_number,runs_scored,wickets,bowler_id,bowler_guest')
+    .eq('match_id', matchId)
+    .order('innings').order('over_number');
+
+  const overs   = ovRes.data || [];
+  const overIds = overs.map(o=>o.id);
+
+  // Fetch balls for these overs
+  const { data: balls } = overIds.length
+    ? await sb.from('cricket_balls')
+        .select('id,over_id,runs,extra_type,is_wicket,batsman_id,batsman_guest')
+        .in('over_id', overIds)
+    : { data: [] };
+
+  // Fetch player names for any registered (non-guest) players in one query
+  const allPlayerIds = [
+    ...new Set([
+      ...overs.filter(o=>o.bowler_id).map(o=>o.bowler_id),
+      ...(balls||[]).filter(b=>b.batsman_id).map(b=>b.batsman_id),
+    ])
+  ];
+  const playerNameMap = {};
+  if (allPlayerIds.length) {
+    const { data: pRows } = await sb.from('players').select('id,name').in('id', allPlayerIds);
+    (pRows||[]).forEach(p => { playerNameMap[p.id] = p.name; });
+  }
+
+  // Helper: get display name
+  const batName  = b => playerNameMap[b.batsman_id] || b.batsman_guest || '?';
+  const bowlName = o => playerNameMap[o.bowler_id]  || o.bowler_guest  || '?';
+
+  // Build innings scorecards
+  const innings = [1,2].map(inn => {
+    const innOvers = overs.filter(o=>o.innings===inn);
+    if (!innOvers.length) return null;
+
+    // Per-batsman stats
+    const batStats = {};
+    for (const b of (balls||[]).filter(b => innOvers.some(o=>o.id===b.over_id))) {
+      const n = batName(b);
+      if (!batStats[n]) batStats[n] = { runs:0, balls:0, fours:0, sixes:0, wickets:0 };
+      if (!b.extra_type) {
+        batStats[n].balls++;
+        batStats[n].runs += Number(b.runs||0);
+        if (Number(b.runs)===4) batStats[n].fours++;
+        if (Number(b.runs)===6) batStats[n].sixes++;
+      }
+      if (b.is_wicket) batStats[n].wickets++;
+    }
+
+    // Per-bowler stats
+    const bowlStats = {};
+    for (const o of innOvers) {
+      const n = bowlName(o);
+      if (!bowlStats[n]) bowlStats[n] = { overs:0, runs:0, wickets:0 };
+      bowlStats[n].overs++;
+      bowlStats[n].runs += Number(o.runs_scored||0);
+      bowlStats[n].wickets += Number(o.wickets||0);
+    }
+
+    const teamName = inn===1 ? m.team1_name : m.team2_name;
+    const net = inn===1 ? m.innings1_net : m.innings2_net;
+    const wkts = inn===1 ? m.innings1_wickets : m.innings2_wickets;
+
+    const batRows = Object.entries(batStats).map(([n,s]) =>
+      `<tr class="border-b border-gray-50 last:border-0">
+        <td class="py-1.5 text-xs font-medium">${n}</td>
+        <td class="py-1.5 text-xs text-right font-bold text-blue-700">${s.runs}</td>
+        <td class="py-1.5 text-xs text-right text-gray-400">${s.balls}b</td>
+        <td class="py-1.5 text-xs text-right text-amber-600">${s.fours||''}</td>
+        <td class="py-1.5 text-xs text-right text-purple-600">${s.sixes||''}</td>
+        <td class="py-1.5 text-xs text-right text-orange-500">${s.wickets||''}</td>
+      </tr>`).join('');
+
+    const bowlRows = Object.entries(bowlStats).map(([n,s]) =>
+      `<tr class="border-b border-gray-50 last:border-0">
+        <td class="py-1.5 text-xs font-medium">${n}</td>
+        <td class="py-1.5 text-xs text-right text-gray-500">${s.overs}</td>
+        <td class="py-1.5 text-xs text-right text-gray-500">${s.runs}</td>
+        <td class="py-1.5 text-xs text-right font-bold text-red-600">${s.wickets}</td>
+      </tr>`).join('');
+
+    return `<div class="mb-4">
+      <div class="flex items-baseline justify-between mb-2">
+        <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">${teamName}</span>
+        <span class="text-sm font-bold">${net??'—'}/${wkts??0}W · ${innOvers.length}ov</span>
+      </div>
+      <table class="w-full mb-2">
+        <thead><tr class="text-gray-400 text-xs">
+          <th class="text-left pb-1">Batsman</th>
+          <th class="text-right pb-1">R</th><th class="text-right pb-1">B</th>
+          <th class="text-right pb-1">4s</th><th class="text-right pb-1">6s</th>
+          <th class="text-right pb-1">W</th>
+        </tr></thead>
+        <tbody>${batRows||'<tr><td colspan="6" class="text-xs text-gray-400 py-1">No ball data</td></tr>'}</tbody>
+      </table>
+      <table class="w-full">
+        <thead><tr class="text-gray-400 text-xs">
+          <th class="text-left pb-1">Bowler</th>
+          <th class="text-right pb-1">Ov</th><th class="text-right pb-1">R</th>
+          <th class="text-right pb-1">W</th>
+        </tr></thead>
+        <tbody>${bowlRows||'<tr><td colspan="4" class="text-xs text-gray-400 py-1">No over data</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  }).filter(Boolean).join('<hr class="border-gray-100 my-3">');
+
+  mount.innerHTML = innings || '<p class="text-xs text-gray-400">No scorecard data.</p>';
+}
+
+// ── Player registry — avoids JSON.stringify in onclick attrs ──
+const playerRegistry = {};
+let playerRegistryIdx = 0;
+function registerPlayer(name) {
+  const idx = playerRegistryIdx++;
+  playerRegistry[idx] = name;
+  return idx;
 }
 
 // ── Sort ──
@@ -277,7 +417,9 @@ window.sortBy = (key) => {
 };
 
 // ── Player drawer ──
-window.openPlayerDrawer = async (name) => {
+window.openPlayerDrawer = async (idx) => {
+  const name = playerRegistry[idx];
+  if (!name) return;
   document.getElementById('sdAv').textContent = ini(name);
   document.getElementById('sdName').textContent = name;
   const batRow = batting.find(r=>r.player_name===name)||{};
