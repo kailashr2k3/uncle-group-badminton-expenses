@@ -98,14 +98,22 @@ async function loadAll() {
     sb.from('cricket_batting_stats').select('*'),
     sb.from('cricket_bowling_stats').select('*'),
     sb.from('cricket_match_summary').select('*').order('date', { ascending:false }),
-    sb.from('cricket_overs').select('*'),
-    sb.from('cricket_balls').select('*'),
+    // Join player names so we can filter by name client-side
+    sb.from('cricket_overs').select('*, bowler:players!cricket_overs_bowler_id_fkey(name)'),
+    sb.from('cricket_balls').select('*, batsman:players!cricket_balls_batsman_id_fkey(name)'),
   ]);
   batting  = b.data || [];
   bowling  = w.data || [];
   matches  = m.data || [];
-  allOvers = o.data || [];
-  allBalls = bl.data || [];
+  // Normalise: add bowler_name and batsman_name fields for easy filtering
+  allOvers = (o.data || []).map(ov => ({
+    ...ov,
+    bowler_name: ov.bowler?.name || ov.bowler_guest || null,
+  }));
+  allBalls = (bl.data || []).map(b => ({
+    ...b,
+    batsman_name: b.batsman?.name || b.batsman_guest || null,
+  }));
   renderBatting();
   renderBowling();
   renderMatches();
