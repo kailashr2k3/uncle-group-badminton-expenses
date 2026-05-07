@@ -282,23 +282,53 @@ function tmplSetup() {
   </div>`;
 }
 
-// ─── Squads template ──────────────────────────────────────
-// squads store [{id, name}] — id is UUID from players table (null for guests)
+// ─── Squads template — tile bucket UI ────────────────────
+// Shows all registered players as tappable tiles.
+// Tap once → Team 1 (blue). Tap again → Team 2 (green). Tap again → unassigned.
+// Guests can be added via a text input.
 function tmplSquads() {
-  const chipRow = (squad, prefix, chipCls) => squad.map((p,i) =>
-    `<div class="flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${chipCls}">
-       <span class="text-gray-400 mr-0.5">${i+1}.</span>${p.name}${!p.id?'<span class="opacity-50 ml-0.5">(guest)</span>':''}
-       <button onclick="removePlayerByIndex('${prefix}',${i})" class="ml-1 opacity-50 hover:opacity-100 text-sm leading-none">×</button>
-     </div>`).join('');
+  const all = W.registeredPlayers || [];
+  const sq1ids = new Set(W.squad1.map(p=>p.id||p.name));
+  const sq2ids = new Set(W.squad2.map(p=>p.id||p.name));
 
-  // Build registered player options (excluding already-selected)
-  const usedIds1 = W.squad1.filter(p=>p.id).map(p=>p.id);
-  const usedIds2 = W.squad2.filter(p=>p.id).map(p=>p.id);
-  const avail1 = (W.registeredPlayers||[]).filter(p=>!usedIds1.includes(p.id)&&!usedIds2.includes(p.id));
-  const avail2 = (W.registeredPlayers||[]).filter(p=>!usedIds1.includes(p.id)&&!usedIds2.includes(p.id));
+  const tileFor = (p) => {
+    const key = p.id || p.name;
+    const inT1 = sq1ids.has(key);
+    const inT2 = sq2ids.has(key);
+    const cls = inT1
+      ? 'bg-blue-600 text-white border-blue-600'
+      : inT2
+        ? 'bg-emerald-600 text-white border-emerald-600'
+        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300';
+    const badge = inT1
+      ? `<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white text-blue-600 text-xs flex items-center justify-center font-bold border border-blue-200">1</span>`
+      : inT2
+        ? `<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white text-emerald-600 text-xs flex items-center justify-center font-bold border border-emerald-200">2</span>`
+        : '';
+    return `<div onclick="window.cycleTile(${JSON.stringify(key)},${JSON.stringify(p.name)},${JSON.stringify(p.id||null)})"
+      class="relative cursor-pointer border-2 rounded-xl px-3 py-2 text-xs font-medium text-center transition-all select-none ${cls}">
+      ${p.name}${!p.id?'<br><span class="opacity-60 text-xs">guest</span>':''}
+      ${badge}
+    </div>`;
+  };
 
-  const playerOpts1 = avail1.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-  const playerOpts2 = avail2.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const allTiles = all.map(tileFor).join('');
+  const guestTiles = W.squad1.filter(p=>!p.id).map(tileFor).join('') +
+                     W.squad2.filter(p=>!p.id).map(p => {
+                       const key = p.name;
+                       const inT1 = sq1ids.has(key);
+                       const inT2 = sq2ids.has(key);
+                       if (!inT1 && !inT2) return '';
+                       return tileFor(p);
+                     }).join('');
+
+  const legend = `<div class="flex gap-3 text-xs">
+    <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-blue-600 flex items-center justify-center text-white font-bold" style="font-size:9px">1</span>${W.team1} (${W.squad1.length})</span>
+    <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-emerald-600 flex items-center justify-center text-white font-bold" style="font-size:9px">2</span>${W.team2} (${W.squad2.length})</span>
+    <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded border-2 border-gray-200"></span>Unassigned</span>
+  </div>`;
+
+  const canLock = W.squad1.length >= 2 && W.squad2.length >= 2;
 
   return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
     <div class="bg-gray-800 rounded-xl p-3 text-white text-sm">
@@ -306,50 +336,53 @@ function tmplSquads() {
       <div class="text-xs text-gray-400 mt-0.5">${W.overs} overs · −${W.penalty} per wicket</div>
     </div>
 
-    <!-- Team 1 -->
-    <div class="rounded-xl border-2 border-blue-200 p-3">
-      <div class="text-xs font-bold text-blue-700 mb-2">${W.team1}</div>
-      <div class="flex gap-2 mb-2">
-        <select id="sq1Sel" class="flex-1 border rounded-lg px-2 py-1.5 text-xs bg-white">
-          <option value="">— Pick registered player —</option>
-          ${playerOpts1}
-          <option value="__guest__">+ Add guest by name…</option>
-        </select>
-        <button onclick="addPlayerFromSelect('sq1')" class="px-3 bg-green-700 text-white rounded-lg text-xs font-semibold hover:bg-green-800">Add</button>
-      </div>
-      <div id="sq1GuestRow" class="hidden flex gap-2 mb-2">
-        <input id="sq1GuestInput" placeholder="Guest name…" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"/>
-        <button onclick="addGuest('sq1')" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold">Add guest</button>
-      </div>
-      <div id="sq1Chips" class="flex flex-wrap gap-1.5 min-h-6">${chipRow(W.squad1,'sq1','bg-blue-50 text-blue-700 border-blue-200') || '<span class="text-xs text-gray-400">No players yet</span>'}</div>
-      <div class="text-xs text-gray-400 mt-2">${W.squad1.length} players</div>
+    <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+      Tap a player once to add to <strong>${W.team1}</strong> (🟦 1),
+      tap again to move to <strong>${W.team2}</strong> (🟩 2),
+      tap once more to remove.
     </div>
 
-    <!-- Team 2 -->
-    <div class="rounded-xl border-2 border-emerald-200 p-3">
-      <div class="text-xs font-bold text-emerald-700 mb-2">${W.team2}</div>
-      <div class="flex gap-2 mb-2">
-        <select id="sq2Sel" class="flex-1 border rounded-lg px-2 py-1.5 text-xs bg-white">
-          <option value="">— Pick registered player —</option>
-          ${playerOpts2}
-          <option value="__guest__">+ Add guest by name…</option>
-        </select>
-        <button onclick="addPlayerFromSelect('sq2')" class="px-3 bg-green-700 text-white rounded-lg text-xs font-semibold hover:bg-green-800">Add</button>
+    ${legend}
+
+    <!-- Player tiles -->
+    <div>
+      <div class="text-xs font-medium text-gray-500 mb-2">Registered players</div>
+      <div class="grid grid-cols-3 gap-2">
+        ${allTiles || '<span class="text-xs text-gray-400 col-span-3">No players loaded</span>'}
       </div>
-      <div id="sq2GuestRow" class="hidden flex gap-2 mb-2">
-        <input id="sq2GuestInput" placeholder="Guest name…" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"/>
-        <button onclick="addGuest('sq2')" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold">Add guest</button>
-      </div>
-      <div id="sq2Chips" class="flex flex-wrap gap-1.5 min-h-6">${chipRow(W.squad2,'sq2','bg-emerald-50 text-emerald-700 border-emerald-200') || '<span class="text-xs text-gray-400">No players yet</span>'}</div>
-      <div class="text-xs text-gray-400 mt-2">${W.squad2.length} players</div>
     </div>
 
-    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-      Select from your registered players list. Use "Add guest" for one-off players.
-      Min 2 per team. Players can bat in multiple overs.
+    <!-- Guest add -->
+    <div>
+      <div class="text-xs font-medium text-gray-500 mb-1.5">Add guest player</div>
+      <div class="flex gap-2">
+        <input id="guestNameInput" placeholder="Guest name…"
+          class="flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-green-500"/>
+        <button onclick="window.addGuestTile()" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold hover:bg-gray-700">Add</button>
+      </div>
+      ${(W.squad1.filter(p=>!p.id).length + W.squad2.filter(p=>!p.id).length) > 0 ? `
+      <div class="grid grid-cols-3 gap-2 mt-2">
+        ${[...W.squad1,...W.squad2].filter(p=>!p.id).filter((p,i,a)=>a.findIndex(x=>x.name===p.name)===i).map(tileFor).join('')}
+      </div>` : ''}
     </div>
-    <button id="squadsNextBtn" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800 disabled:opacity-40"
-      ${W.squad1.length<2||W.squad2.length<2?'disabled':''}>Lock Squads & Start Innings 1 →</button>
+
+    <!-- Team summary strips -->
+    <div class="grid grid-cols-2 gap-2">
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-2.5">
+        <div class="text-xs font-bold text-blue-700 mb-1">${W.team1} (${W.squad1.length})</div>
+        <div class="flex flex-wrap gap-1">${W.squad1.map(p=>`<span class="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5">${p.name}</span>`).join('') || '<span class="text-xs text-gray-400">Empty</span>'}</div>
+      </div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+        <div class="text-xs font-bold text-emerald-700 mb-1">${W.team2} (${W.squad2.length})</div>
+        <div class="flex flex-wrap gap-1">${W.squad2.map(p=>`<span class="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">${p.name}</span>`).join('') || '<span class="text-xs text-gray-400">Empty</span>'}</div>
+      </div>
+    </div>
+
+    <button id="squadsNextBtn"
+      class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800 disabled:opacity-40"
+      ${canLock?'':'disabled'}>
+      ${canLock ? 'Lock Squads & Start Innings 1 →' : 'Add at least 2 players per team'}
+    </button>
     <button onclick="setStep(0)" class="text-xs text-gray-400 text-center hover:text-gray-600">← Back to setup</button>
   </div>`;
 }
@@ -410,10 +443,11 @@ function tmplScoring() {
       <span><span class="font-bold text-blue-700">${st.runs}</span><span class="text-gray-400"> (${st.balls}b)</span>${st.wickets>0?`<span class="text-orange-500 ml-1">${st.wickets}W</span>`:''}</span>
     </div>`).join('');
 
-  // bowler options
+  // bowler options — fieldingSquad() returns [{id,name}]; use .name throughout
   const bowlerOpts = fieldingSquad().map(p=>{
-    const st=W.bowlerStats[p];
-    return `<option value="${p}" ${p===W.currentBowler?'selected':''}>${p}${st?`  ·  ${st.overs}ov ${st.runs}r ${st.wickets}w`:''}`;
+    const name = p.name;
+    const st   = W.bowlerStats[name];
+    return `<option value="${name}" ${name===W.currentBowler?'selected':''}>${name}${st?`  ·  ${st.overs}ov ${st.runs}r ${st.wickets}w`:''}`;
   }).join('');
 
   return `<div class="bg-white rounded-2xl shadow overflow-hidden">
@@ -611,7 +645,7 @@ function wireStep(step) {
       // reset scoring state
       resetScoringState();
       W.innings = 1;
-      W.currentBowler = fieldingSquad()[0] || '';
+      W.currentBowler = fieldingSquad()[0]?.name || '';
       document.getElementById('wizardContainer').classList.remove('hidden');
       setStep(2);
       openPairModal(false);
@@ -627,7 +661,7 @@ function wireStep(step) {
     document.getElementById('startChaseBtn').onclick = () => {
       resetScoringState();
       W.innings = 2;
-      W.currentBowler = fieldingSquad()[0] || '';
+      W.currentBowler = fieldingSquad()[0]?.name || '';
       sb.from('cricket_matches').update({ status:'innings2' }).eq('id',W.matchId);
       setStep(4);
       openPairModal(false);
@@ -673,42 +707,35 @@ async function loadRegisteredPlayers() {
   W.registeredPlayers = data || [];
 }
 
-window.addPlayerFromSelect = (prefix) => {
-  const sel = document.getElementById(prefix+'Sel');
-  const val = sel?.value;
-  if (!val) return;
-  if (val === '__guest__') {
-    // show guest name input
-    document.getElementById(prefix+'GuestRow').classList.remove('hidden');
-    sel.value = '';
-    return;
+// Cycle a player tile: unassigned → team1 → team2 → unassigned
+window.cycleTile = (key, name, id) => {
+  const inT1 = W.squad1.some(p=>(p.id||p.name)===key);
+  const inT2 = W.squad2.some(p=>(p.id||p.name)===key);
+  if (!inT1 && !inT2) {
+    // add to team 1
+    W.squad1.push({ id: id||null, name });
+  } else if (inT1) {
+    // move to team 2
+    W.squad1 = W.squad1.filter(p=>(p.id||p.name)!==key);
+    W.squad2.push({ id: id||null, name });
+  } else {
+    // remove from team 2
+    W.squad2 = W.squad2.filter(p=>(p.id||p.name)!==key);
   }
-  const player = W.registeredPlayers.find(p => p.id === val);
-  if (!player) return;
-  const arr = prefix==='sq1' ? W.squad1 : W.squad2;
-  // prevent duplicates across both squads
-  const allIds = [...W.squad1,...W.squad2].filter(p=>p.id).map(p=>p.id);
-  if (allIds.includes(player.id)) { sel.value=''; return; }
-  arr.push({ id: player.id, name: player.name });
-  sel.value = '';
   renderStep();
 };
 
-window.addGuest = (prefix) => {
-  const input = document.getElementById(prefix+'GuestInput');
+// Add a guest player (starts unassigned, first tap goes to team 1)
+window.addGuestTile = () => {
+  const input = document.getElementById('guestNameInput');
   const name  = input?.value?.trim();
   if (!name) return;
-  const arr = prefix==='sq1' ? W.squad1 : W.squad2;
-  if (arr.some(p=>p.name===name)) { input.value=''; return; }
-  arr.push({ id: null, name });  // id=null marks guest
+  const already = [...W.squad1,...W.squad2].some(p=>p.name===name);
+  const inPool  = (W.registeredPlayers||[]).some(p=>p.name===name);
+  if (already || inPool) { input.value=''; return; }
+  // Add as guest to team 1 immediately
+  W.squad1.push({ id: null, name });
   input.value='';
-  document.getElementById(prefix+'GuestRow').classList.add('hidden');
-  renderStep();
-};
-
-window.removePlayer = (prefix, name) => {
-  if (prefix==='sq1') W.squad1 = W.squad1.filter(p=>p.name!==name);
-  else                W.squad2 = W.squad2.filter(p=>p.name!==name);
   renderStep();
 };
 
@@ -978,13 +1005,6 @@ sb.auth.onAuthStateChange(async (event, session) => {
     if (!W.registeredPlayers) await loadRegisteredPlayers();
   }
 });
-
-// ── addPlayerByIndex helper (no quote escaping needed) ─────
-window.removePlayerByIndex = (prefix, idx) => {
-  if (prefix === 'sq1') W.squad1.splice(idx, 1);
-  else                  W.squad2.splice(idx, 1);
-  renderStep();
-};
 
 // ── Better error handling for loadRecentMatches ────────────
 async function safeLoadRecentMatches() {
