@@ -201,6 +201,8 @@ const W = {
   pairHistory:  [], // [{ overNum, p1, p2 }]
   currentPair: null, striker: 0,
   overJustDone: false,
+  needsBowlerChange: false,
+  lastBowler: null,
   lastSnap: null,
   // innings 1 summary (saved before innings 2)
   inn1: null,
@@ -489,12 +491,40 @@ function tmplScoring() {
 
     <div class="p-4 flex flex-col gap-3">
       <!-- between-over prompt -->
-      ${W.overJustDone&&!inningsOver?`<div class="bg-teal-50 border border-teal-200 rounded-xl p-3">
-        <div class="text-sm font-semibold text-teal-800 mb-1">Over ${W.overNum-1} complete</div>
-        <div class="text-xs text-teal-600 mb-2">Currently: <strong>${pair?.p1?.name}</strong> & <strong>${pair?.p2?.name}</strong></div>
-        <div class="flex gap-2">
-          <button onclick="window.keepPair()" class="flex-1 text-xs bg-teal-100 text-teal-700 border border-teal-300 rounded-xl py-2 font-medium hover:bg-teal-200">Keep pair</button>
-          <button onclick="window.openPairModal(true)" class="flex-1 text-xs bg-white text-gray-600 border border-gray-200 rounded-xl py-2 hover:bg-gray-50">Change pair</button>
+      ${W.overJustDone&&!inningsOver?`<div class="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col gap-3">
+        <div>
+          <div class="text-sm font-semibold text-teal-800">Over ${W.overNum-1} complete — set next over</div>
+          <div class="text-xs text-teal-600 mt-0.5">Confirm pair and bowler before continuing</div>
+        </div>
+        <!-- Bowler selector — highlighted in red if same as last over -->
+        <div>
+          <label class="text-xs font-medium text-gray-600 mb-1 block">
+            Bowler — ${fieldingTeam()}
+            ${W.needsBowlerChange ? '<span class="text-red-500 ml-1">⚠ Must change bowler</span>' : ''}
+          </label>
+          <select id="bowlerSelOver" onchange="window.W.currentBowler=this.value;window.W.needsBowlerChange=(this.value===window.W.lastBowler);renderStep();"
+            class="w-full border-2 rounded-lg px-3 py-2 text-sm bg-white ${W.needsBowlerChange ? 'border-red-400' : 'border-teal-300'}">
+            ${fieldingSquad().map(p=>{
+              const name=p.name;
+              const st=W.bowlerStats[name];
+              const isLast = name===W.lastBowler;
+              return '<option value="'+name+'" '+(name===W.currentBowler?'selected':'')+'>'+name+(isLast?' (prev over)':'')+(st?'  ·  '+st.overs+'ov '+st.runs+'r '+st.wickets+'w':'')+'</option>';
+            }).join('')}
+          </select>
+          ${W.needsBowlerChange?'<p class="text-xs text-red-500 mt-1">Same bowler cannot bowl consecutive overs. Pick someone else.</p>':''}
+        </div>
+        <!-- Pair -->
+        <div>
+          <div class="text-xs font-medium text-gray-600 mb-1">Batting pair</div>
+          <div class="text-xs text-teal-700 font-medium mb-2">${pair?.p1?.name} & ${pair?.p2?.name}</div>
+          <div class="flex gap-2">
+            <button onclick="window.keepPairAndBowler()" class="flex-1 text-xs bg-teal-600 text-white border border-teal-600 rounded-xl py-2 font-medium hover:bg-teal-700 disabled:opacity-40" ${W.needsBowlerChange?'disabled':''}>
+              ✓ Confirm & start over
+            </button>
+            <button onclick="window.openPairModal(true)" class="text-xs bg-white text-gray-600 border border-gray-200 rounded-xl py-2 px-3 hover:bg-gray-50">
+              Change pair
+            </button>
+          </div>
         </div>
       </div>`:''}
 
@@ -705,7 +735,7 @@ function resetScoringState() {
   W.overNum=1; W.balls=[]; W.allOvers=[];
   W.batsmanStats={}; W.bowlerStats={};
   W.pairHistory=[]; W.currentPair=null;
-  W.striker=0; W.overJustDone=false; W.lastSnap=null;
+  W.striker=0; W.overJustDone=false; W.needsBowlerChange=false; W.lastBowler=null; W.lastSnap=null;
 }
 
 function resetWizard() {
@@ -723,8 +753,9 @@ function resetWizard() {
 // ── Global helpers (called from inline onclick) ───────────
 // openPairModal / keepPair / recordBall are defined as window.X = ()=>{}
 // directly where they appear below — no need to alias here.
-window.W       = W;
-window.setStep = setStep;
+window.W                = W;
+window.setStep          = setStep;
+window.keepPairAndBowler = keepPairAndBowler;
 window.adj = (key, delta) => {
   if (key==='overs')   W.overs   = Math.max(1, Math.min(50, W.overs+delta));
   if (key==='penalty') W.penalty = Math.max(0, W.penalty+delta);
@@ -798,6 +829,13 @@ window.keepPair = () => {
   renderStep();
 };
 
+window.keepPairAndBowler = () => {
+  if (W.needsBowlerChange) return; // block if same bowler
+  W.overJustDone = false;
+  W.needsBowlerChange = false;
+  renderStep();
+};
+
 document.getElementById('pairKeepBtn').onclick = () => {
   document.getElementById('pairModal').classList.add('hidden');
   W.overJustDone = false;
@@ -814,7 +852,7 @@ document.getElementById('pairConfirmBtn').onclick = () => {
   W.currentPair = { p1: sq[i1], p2: sq[i2] }; // full {id,name} objects
   W.striker = 0;
   W.pairHistory.push({ overNum:W.overNum, p1:sq[i1], p2:sq[i2] });
-  W.overJustDone = false;
+  // don't clear overJustDone here — user still needs to confirm bowler
   renderStep();
 };
 
@@ -828,7 +866,7 @@ function openWktModal() {
 document.getElementById('wktCancelBtn').onclick = () => document.getElementById('wktModal').classList.add('hidden');
 document.getElementById('wktConfirmBtn').onclick = async () => {
   document.getElementById('wktModal').classList.add('hidden');
-  const batsmanName = W.striker===0 ? W.currentPair.p1 : W.currentPair.p2;
+  const batsmanName = W.striker===0 ? W.currentPair.p1?.name : W.currentPair.p2?.name;
   const newBalls = [...W.balls, { type:'wkt', runs:0, extra:false }];
   W.penalties += W.penalty;
   W.wickets++;
@@ -854,7 +892,7 @@ window.recordBall = async (act, val) => {
   if (act==='wkt') { snap(); openWktModal(); return; }
 
   snap();
-  const batsmanName = W.striker===0 ? W.currentPair.p1 : W.currentPair.p2;
+  const batsmanName = W.striker===0 ? W.currentPair.p1?.name : W.currentPair.p2?.name;
 
   if (act==='wd'||act==='nb') {
     W.balls.push({ type:act, runs:1, extra:true });
@@ -895,6 +933,8 @@ async function finishOver(balls) {
   W.overNum++;
   W.striker = 1-W.striker;
   W.overJustDone = true;
+  W.lastBowler = W.currentBowler;   // remember who just bowled
+  W.needsBowlerChange = true;        // force bowler change next over
   renderStep();
 }
 
