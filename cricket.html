@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Uncle Group — Cricket</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    /* wizard step states */
+    .step-dot { width:8px; height:8px; border-radius:50%; transition:all .3s; }
+    .step-dot.done    { background:#16a34a; }
+    .step-dot.active  { background:#1d4ed8; width:24px; border-radius:4px; }
+    .step-dot.pending { background:#e5e7eb; }
+    /* ball display */
+    .ball { width:36px; height:36px; border-radius:50%; border:2px solid transparent; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; flex-shrink:0; }
+    /* modals */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:1rem; }
+    /* collapsible match card */
+    .match-card summary::-webkit-details-marker { display:none; }
+    /* run buttons */
+    .run-btn { border-radius:12px; padding:10px 0; font-weight:600; font-size:13px; transition:all .15s; active:scale(.95); }
+    /* tab active */
+    .ctab-active { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+<div class="max-w-lg mx-auto p-4">
+
+  <!-- Nav -->
+  <nav class="flex items-center gap-1 mb-6 bg-white rounded-2xl shadow px-4 py-3">
+    <span class="font-bold text-sm text-gray-800 mr-4">Uncle Group</span>
+    <a href="index.html"   class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">💰 Expenses</a>
+    <a href="cricket.html" class="text-xs px-3 py-1.5 rounded-full bg-green-700 text-white font-medium">🏏 Scoring App</a>
+    <a href="stats.html"   class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">📊 Cricket Stats</a>
+    <div class="ml-auto">
+      <button id="adminToggle" class="text-sm px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600">Admin</button>
+    </div>
+  </nav>
+
+  <!-- Public: Recent Matches -->
+  <section id="publicSection">
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-xl font-bold">Cricket Matches</h1>
+    </div>
+    <div id="recentMatchesList" class="flex flex-col gap-3">
+      <p class="text-sm text-gray-400">Loading matches…</p>
+    </div>
+  </section>
+
+  <!-- Admin panel — injected here by JS after auth check -->
+  <div id="adminMount" class="mt-6"></div>
+
+</div>
+
+<!-- ── MODALS ── -->
+<!-- Pair picker -->
+<div id="pairModal" class="modal-backdrop hidden">
+  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+    <div id="pairModalTitle" class="font-bold mb-1">Select pair</div>
+    <div id="pairModalSub" class="text-xs text-gray-400 mb-4"></div>
+    <div class="mb-3">
+      <label class="text-xs font-medium text-gray-500 block mb-1">Batsman 1 (striker ★)</label>
+      <select id="pairP1" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"></select>
+    </div>
+    <div class="mb-4">
+      <label class="text-xs font-medium text-gray-500 block mb-1">Batsman 2 (non-striker)</label>
+      <select id="pairP2" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"></select>
+    </div>
+    <div id="pairModalError" class="text-xs text-red-500 mb-3 hidden">Select two different players</div>
+    <div class="flex gap-2">
+      <button id="pairConfirmBtn" class="flex-1 bg-green-700 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-green-800">Confirm pair →</button>
+      <button id="pairKeepBtn"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-200 hidden">Keep current</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wicket modal -->
+<div id="wktModal" class="modal-backdrop hidden">
+  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+    <div class="font-bold mb-1">Wicket! 🏏</div>
+    <div class="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3">
+      <div id="wktPenaltyMsg" class="text-sm font-semibold text-orange-800"></div>
+      <div class="text-xs text-orange-600 mt-0.5">Batsmen stay — penalty only format</div>
+    </div>
+    <div id="wktBowlerMsg" class="text-xs text-gray-500 mb-4"></div>
+    <div class="flex gap-2">
+      <button id="wktConfirmBtn" class="flex-1 bg-gray-900 text-white rounded-xl py-2.5 text-sm font-semibold">Confirm</button>
+      <button id="wktCancelBtn"  class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2.5 text-sm">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+
+const SUPABASE_URL     = "https://ioxtxbgqaognzxscgkly.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveHR4YmdxYW9nbnp4c2Nna2x5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTgxMDksImV4cCI6MjA3NTczNDEwOX0.oIST2TVUJbg4H0PziuNdLBcSHFERkkM2M29bHpsYE-E";
+const SITE_URL          = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/cricket.html";
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
+});
+
+// ── Auth ──────────────────────────────────────────────────
+async function getUser() {
+  const { data:{ user } } = await sb.auth.getUser();
+  return user;
+}
+
+// ── Public: load recent matches ───────────────────────────
+async function loadRecentMatches() {
+  const { data, error } = await sb
+    .from('cricket_match_summary')
+    .select('*')
+    .order('date', { ascending: false })
+    .limit(10);
+
+  const list = document.getElementById('recentMatchesList');
+  if (error || !data?.length) {
+    list.innerHTML = '<p class="text-sm text-gray-400">No matches yet.</p>';
+    return;
+  }
+
+  list.innerHTML = data.map(m => {
+    const isComplete = m.status === 'complete';
+    const resultLine = isComplete
+      ? `<span class="font-semibold text-green-700">🏆 ${m.winner_team} won</span>`
+      : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`;
+
+    const score1 = isComplete ? `${m.innings1_net ?? '—'}/${m.innings1_wickets ?? 0}W` : '—';
+    const score2 = isComplete ? `${m.innings2_net ?? '—'}/${m.innings2_wickets ?? 0}W` : '—';
+
+    return `<details class="match-card bg-white rounded-2xl shadow overflow-hidden">
+      <summary class="p-4 cursor-pointer list-none">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-semibold text-sm">${m.team1_name} vs ${m.team2_name}</div>
+            <div class="text-xs text-gray-400 mt-0.5">${m.date} · ${m.overs} overs</div>
+          </div>
+          <div class="text-right">
+            ${resultLine}
+          </div>
+        </div>
+      </summary>
+      <div class="px-4 pb-4 border-t border-gray-100 pt-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-50 rounded-xl p-3 text-center">
+            <div class="text-xs text-gray-500 mb-1">${m.team1_name}</div>
+            <div class="text-xl font-bold">${score1}</div>
+            <div class="text-xs text-gray-400">${m.overs} overs</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3 text-center">
+            <div class="text-xs text-gray-500 mb-1">${m.team2_name}</div>
+            <div class="text-xl font-bold">${score2}</div>
+            <div class="text-xs text-gray-400">${m.overs} overs</div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <a href="stats.html" class="text-xs text-blue-600 hover:underline">View player stats →</a>
+        </div>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+// ── Wizard state ──────────────────────────────────────────
+const W = {
+  step: 0,
+  matchId: null, sessionId: null,
+  team1: '', team2: '', overs: 6, penalty: 5,
+  squad1: [], squad2: [],
+  // scoring
+  innings: 1,
+  score: 0, penalties: 0, wickets: 0,
+  overNum: 1, balls: [],
+  allOvers: [],
+  batsmanStats: {}, // { name: { runs, balls, wickets } }
+  bowlerStats:  {}, // { name: { overs, runs, wickets } }
+  pairHistory:  [], // [{ overNum, p1, p2 }]
+  currentPair: null, striker: 0,
+  overJustDone: false,
+  lastSnap: null,
+  // innings 1 summary (saved before innings 2)
+  inn1: null,
+};
+
+const STEPS = ['setup','squads','innings1','break','innings2','result'];
+const STEP_LABELS = ['Match setup','Build squads','Innings 1','Innings break','Innings 2','Result'];
+
+function setStep(n) {
+  W.step = n;
+  STEPS.forEach((_, i) => {
+    const dot = document.getElementById(`dot${i}`);
+    if (!dot) return;
+    dot.className = 'step-dot ' + (i < n ? 'done' : i === n ? 'active' : 'pending');
+  });
+  document.getElementById('wizardStepLabel').textContent = `${STEP_LABELS[n]} (${n+1}/${STEPS.length})`;
+  renderStep();
+}
+
+function snap() {
+  W.lastSnap = {
+    score: W.score, penalties: W.penalties, wickets: W.wickets,
+    overNum: W.overNum, balls: [...W.balls], allOvers: [...W.allOvers],
+    batsmanStats: JSON.parse(JSON.stringify(W.batsmanStats)),
+    bowlerStats:  JSON.parse(JSON.stringify(W.bowlerStats)),
+    pairHistory:  [...W.pairHistory],
+    currentPair: W.currentPair ? {...W.currentPair} : null,
+    striker: W.striker, overJustDone: W.overJustDone,
+  };
+}
+
+function restoreSnap() {
+  if (!W.lastSnap) return;
+  const s = W.lastSnap;
+  W.score=s.score; W.penalties=s.penalties; W.wickets=s.wickets;
+  W.overNum=s.overNum; W.balls=[...s.balls]; W.allOvers=[...s.allOvers];
+  W.batsmanStats=JSON.parse(JSON.stringify(s.batsmanStats));
+  W.bowlerStats=JSON.parse(JSON.stringify(s.bowlerStats));
+  W.pairHistory=[...s.pairHistory];
+  W.currentPair=s.currentPair?{...s.currentPair}:null;
+  W.striker=s.striker; W.overJustDone=s.overJustDone;
+  W.lastSnap=null;
+}
+
+// batting/fielding squads depending on innings
+function battingSquad()  { return W.innings===1 ? W.squad1 : W.squad2; }
+function fieldingSquad() { return W.innings===1 ? W.squad2 : W.squad1; }
+function battingTeam()   { return W.innings===1 ? W.team1  : W.team2;  }
+function fieldingTeam()  { return W.innings===1 ? W.team2  : W.team1;  }
+
+function netScore() { return W.score - W.penalties; }
+
+// ── Step renderers ────────────────────────────────────────
+function renderStep() {
+  const el = document.getElementById('wizardStep');
+  const s  = STEPS[W.step];
+  if (s === 'setup')    el.innerHTML = tmplSetup();
+  else if (s === 'squads')  el.innerHTML = tmplSquads();
+  else if (s === 'innings1' || s === 'innings2') el.innerHTML = tmplScoring();
+  else if (s === 'break')   el.innerHTML = tmplBreak();
+  else if (s === 'result')  el.innerHTML = tmplResult();
+  wireStep(s);
+}
+
+// ─── Setup template ───────────────────────────────────────
+function tmplSetup() {
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-green-800 rounded-xl p-4 text-white text-center">
+      <div class="text-3xl mb-1">🏏</div>
+      <div class="font-bold text-base">New Match</div>
+      <div class="text-xs text-green-300 mt-0.5">Pairs format · flexible rotation</div>
+    </div>
+    <div><label class="text-xs font-medium text-gray-500 block mb-1">Session date</label>
+      <input type="date" id="setupDate" value="${new Date().toISOString().slice(0,10)}" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+    <div><label class="text-xs font-medium text-gray-500 block mb-1">Team 1 — bats first</label>
+      <input id="setupT1" value="${W.team1||'Uncle XI'}" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+    <div><label class="text-xs font-medium text-gray-500 block mb-1">Team 2 — chases</label>
+      <input id="setupT2" value="${W.team2||'Challengers'}" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="text-xs font-medium text-gray-500 block mb-1">Total overs</label>
+        <div class="flex items-center gap-1 border rounded-lg px-2 py-1">
+          <button onclick="adj('overs',-1)" class="w-8 h-8 rounded bg-gray-100 font-bold text-lg hover:bg-gray-200">−</button>
+          <span id="oversVal" class="flex-1 text-center font-bold text-xl">${W.overs}</span>
+          <button onclick="adj('overs',1)"  class="w-8 h-8 rounded bg-gray-100 font-bold text-lg hover:bg-gray-200">+</button>
+        </div></div>
+      <div><label class="text-xs font-medium text-gray-500 block mb-1">Wicket penalty</label>
+        <div class="flex items-center gap-1 border rounded-lg px-2 py-1">
+          <button onclick="adj('penalty',-1)" class="w-8 h-8 rounded bg-gray-100 font-bold text-lg hover:bg-gray-200">−</button>
+          <span id="penaltyVal" class="flex-1 text-center font-bold text-xl">${W.penalty}</span>
+          <button onclick="adj('penalty',1)"  class="w-8 h-8 rounded bg-gray-100 font-bold text-lg hover:bg-gray-200">+</button>
+        </div></div>
+    </div>
+    <div class="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
+      <div class="font-semibold text-gray-700">Rules</div>
+      <div>• Pair can change after each over</div>
+      <div>• Wicket = −${W.penalty} runs, batsmen stay</div>
+      <div>• Wide / No ball = +1 run, doesn't count</div>
+    </div>
+    <button id="setupNextBtn" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800">Next — Build Squads →</button>
+  </div>`;
+}
+
+// ─── Squads template ──────────────────────────────────────
+// squads store [{id, name}] — id is UUID from players table (null for guests)
+function tmplSquads() {
+  const chipRow = (squad, prefix, chipCls) => squad.map((p,i) =>
+    `<div class="flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${chipCls}">
+       <span class="text-gray-400 mr-0.5">${i+1}.</span>${p.name}${!p.id?'<span class="opacity-50 ml-0.5">(guest)</span>':''}
+       <button onclick="removePlayerByIndex('${prefix}',${i})" class="ml-1 opacity-50 hover:opacity-100 text-sm leading-none">×</button>
+     </div>`).join('');
+
+  // Build registered player options (excluding already-selected)
+  const usedIds1 = W.squad1.filter(p=>p.id).map(p=>p.id);
+  const usedIds2 = W.squad2.filter(p=>p.id).map(p=>p.id);
+  const avail1 = (W.registeredPlayers||[]).filter(p=>!usedIds1.includes(p.id)&&!usedIds2.includes(p.id));
+  const avail2 = (W.registeredPlayers||[]).filter(p=>!usedIds1.includes(p.id)&&!usedIds2.includes(p.id));
+
+  const playerOpts1 = avail1.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const playerOpts2 = avail2.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-gray-800 rounded-xl p-3 text-white text-sm">
+      <div class="font-bold">${W.team1} vs ${W.team2}</div>
+      <div class="text-xs text-gray-400 mt-0.5">${W.overs} overs · −${W.penalty} per wicket</div>
+    </div>
+
+    <!-- Team 1 -->
+    <div class="rounded-xl border-2 border-blue-200 p-3">
+      <div class="text-xs font-bold text-blue-700 mb-2">${W.team1}</div>
+      <div class="flex gap-2 mb-2">
+        <select id="sq1Sel" class="flex-1 border rounded-lg px-2 py-1.5 text-xs bg-white">
+          <option value="">— Pick registered player —</option>
+          ${playerOpts1}
+          <option value="__guest__">+ Add guest by name…</option>
+        </select>
+        <button onclick="addPlayerFromSelect('sq1')" class="px-3 bg-green-700 text-white rounded-lg text-xs font-semibold hover:bg-green-800">Add</button>
+      </div>
+      <div id="sq1GuestRow" class="hidden flex gap-2 mb-2">
+        <input id="sq1GuestInput" placeholder="Guest name…" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"/>
+        <button onclick="addGuest('sq1')" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold">Add guest</button>
+      </div>
+      <div id="sq1Chips" class="flex flex-wrap gap-1.5 min-h-6">${chipRow(W.squad1,'sq1','bg-blue-50 text-blue-700 border-blue-200') || '<span class="text-xs text-gray-400">No players yet</span>'}</div>
+      <div class="text-xs text-gray-400 mt-2">${W.squad1.length} players</div>
+    </div>
+
+    <!-- Team 2 -->
+    <div class="rounded-xl border-2 border-emerald-200 p-3">
+      <div class="text-xs font-bold text-emerald-700 mb-2">${W.team2}</div>
+      <div class="flex gap-2 mb-2">
+        <select id="sq2Sel" class="flex-1 border rounded-lg px-2 py-1.5 text-xs bg-white">
+          <option value="">— Pick registered player —</option>
+          ${playerOpts2}
+          <option value="__guest__">+ Add guest by name…</option>
+        </select>
+        <button onclick="addPlayerFromSelect('sq2')" class="px-3 bg-green-700 text-white rounded-lg text-xs font-semibold hover:bg-green-800">Add</button>
+      </div>
+      <div id="sq2GuestRow" class="hidden flex gap-2 mb-2">
+        <input id="sq2GuestInput" placeholder="Guest name…" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"/>
+        <button onclick="addGuest('sq2')" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold">Add guest</button>
+      </div>
+      <div id="sq2Chips" class="flex flex-wrap gap-1.5 min-h-6">${chipRow(W.squad2,'sq2','bg-emerald-50 text-emerald-700 border-emerald-200') || '<span class="text-xs text-gray-400">No players yet</span>'}</div>
+      <div class="text-xs text-gray-400 mt-2">${W.squad2.length} players</div>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+      Select from your registered players list. Use "Add guest" for one-off players.
+      Min 2 per team. Players can bat in multiple overs.
+    </div>
+    <button id="squadsNextBtn" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800 disabled:opacity-40"
+      ${W.squad1.length<2||W.squad2.length<2?'disabled':''}>Lock Squads & Start Innings 1 →</button>
+    <button onclick="setStep(0)" class="text-xs text-gray-400 text-center hover:text-gray-600">← Back to setup</button>
+  </div>`;
+}
+
+// ─── Scoring template ─────────────────────────────────────
+function tmplScoring() {
+  const isChase = W.innings === 2;
+  const legalBalls = W.balls.filter(b=>!b.extra).length;
+  const net = netScore();
+  const target = isChase && W.inn1 ? W.inn1.net + 1 : null;
+  const needed = target !== null ? target - net : null;
+  const totalBallsDone = (W.overNum-1)*6 + legalBalls;
+  const ballsLeft = W.overs*6 - totalBallsDone;
+  const inningsOver = W.overNum > W.overs;
+  const heroColor = isChase ? 'bg-green-800' : 'bg-blue-900';
+
+  // ball dots (current over)
+  const ballDots = [...W.balls, ...Array(Math.max(0,6-W.balls.length)).fill(null)].map(b => {
+    if (!b) return `<div class="ball" style="background:#f3f4f6;border-color:#e5e7eb;color:#d1d5db"></div>`;
+    const cfg = {
+      run0:  ['#f3f4f6','#e5e7eb','#4b5563','0'],
+      run1:  ['#EFF6FF','#93c5fd','#1d4ed8','1'],
+      run2:  ['#f0fdf4','#86efac','#15803d','2'],
+      run4:  ['#fffbeb','#fcd34d','#92400e','4'],
+      run6:  ['#faf5ff','#c4b5fd','#5b21b6','6'],
+      wd:    ['#fef2f2','#fca5a5','#991b1b','Wd'],
+      nb:    ['#fff7ed','#fdba74','#9a3412','NB'],
+      wkt:   ['#1f2937','#1f2937','#fff','W−'],
+    }[b.type] || ['#f3f4f6','#e5e7eb','#111','?'];
+    return `<div class="ball" style="background:${cfg[0]};border-color:${cfg[1]};color:${cfg[2]}">${cfg[3]}</div>`;
+  }).join('');
+
+  // batsmen rows
+  const pair = W.currentPair;
+  const batsmenHtml = pair ? [pair.p1,pair.p2].map((player,i)=>{ const name = player?.name || '?';
+    const st = W.batsmanStats[name]||{runs:0,balls:0,wickets:0};
+    return `<div onclick="window.setStriker(${i})" class="flex items-center justify-between px-3 py-2.5 border-t border-gray-50 cursor-pointer ${i===W.striker?'bg-blue-50':''}">
+      <div class="flex items-center gap-2">
+        ${i===W.striker?'<span class="text-yellow-500">★</span>':''}
+        <span class="text-sm font-medium">${name}</span>
+        ${st.wickets>0?`<span class="text-xs bg-orange-100 text-orange-600 rounded-full px-1.5">${st.wickets}W</span>`:''}
+      </div>
+      <span class="text-sm"><span class="font-bold text-blue-700">${st.runs}</span><span class="text-gray-400 text-xs ml-1">(${st.balls}b)</span></span>
+    </div>`;
+  }).join('') : '<div class="px-3 py-2 text-xs text-gray-400">No pair selected</div>';
+
+  // overs log
+  const oversLog = W.allOvers.length ? W.allOvers.map(o=>`
+    <div class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+      <span class="text-gray-500">Ov ${o.num} — <span class="font-medium text-gray-700">${o.bowler}</span></span>
+      <span class="font-semibold">${o.runs}r</span>
+    </div>`).join('') : '';
+
+  // batsman summary
+  const batSummary = Object.entries(W.batsmanStats).map(([name,st])=>`
+    <div class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+      <span class="font-medium">${name}</span>
+      <span><span class="font-bold text-blue-700">${st.runs}</span><span class="text-gray-400"> (${st.balls}b)</span>${st.wickets>0?`<span class="text-orange-500 ml-1">${st.wickets}W</span>`:''}</span>
+    </div>`).join('');
+
+  // bowler options
+  const bowlerOpts = fieldingSquad().map(p=>{
+    const st=W.bowlerStats[p];
+    return `<option value="${p}" ${p===W.currentBowler?'selected':''}>${p}${st?`  ·  ${st.overs}ov ${st.runs}r ${st.wickets}w`:''}`;
+  }).join('');
+
+  return `<div class="bg-white rounded-2xl shadow overflow-hidden">
+    <!-- hero -->
+    <div class="${heroColor} p-5 text-white text-center">
+      <div class="text-xs font-semibold opacity-70 mb-1">${battingTeam()} batting</div>
+      <div class="text-5xl font-bold leading-none">${net}<span class="text-2xl opacity-60"> (${W.wickets}W)</span></div>
+      <div class="text-xs opacity-70 mt-1">Over ${W.overNum-1}.${legalBalls} of ${W.overs} · Gross ${W.score} − ${W.penalties} pen</div>
+      ${isChase&&needed!==null?`<div class="mt-2 inline-block bg-white bg-opacity-20 rounded-full px-3 py-1 text-xs font-semibold">Need ${Math.max(0,needed)} off ${Math.max(0,ballsLeft)} balls</div>`:''}
+    </div>
+
+    <div class="p-4 flex flex-col gap-3">
+      <!-- between-over prompt -->
+      ${W.overJustDone&&!inningsOver?`<div class="bg-teal-50 border border-teal-200 rounded-xl p-3">
+        <div class="text-sm font-semibold text-teal-800 mb-1">Over ${W.overNum-1} complete</div>
+        <div class="text-xs text-teal-600 mb-2">Currently: <strong>${pair?.p1?.name}</strong> & <strong>${pair?.p2?.name}</strong></div>
+        <div class="flex gap-2">
+          <button onclick="window.keepPair()" class="flex-1 text-xs bg-teal-100 text-teal-700 border border-teal-300 rounded-xl py-2 font-medium hover:bg-teal-200">Keep pair</button>
+          <button onclick="window.openPairModal(true)" class="flex-1 text-xs bg-white text-gray-600 border border-gray-200 rounded-xl py-2 hover:bg-gray-50">Change pair</button>
+        </div>
+      </div>`:''}
+
+      <!-- current over -->
+      <div class="bg-gray-50 rounded-xl p-3">
+        <div class="text-xs font-medium text-gray-500 mb-2">Over ${W.overNum} — ${legalBalls}/6</div>
+        <div class="flex gap-1.5 flex-wrap">${ballDots}</div>
+        ${W.balls.some(b=>b.type==='wkt')?`<div class="text-xs text-orange-600 mt-1.5 font-medium">−${W.balls.filter(b=>b.type==='wkt').length*W.penalty} runs penalty this over</div>`:''}
+      </div>
+
+      <!-- batsmen -->
+      <div class="bg-white border border-gray-100 rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-3 pt-2 pb-1">
+          <span class="text-xs font-medium text-gray-400">At crease — tap to set striker</span>
+          <button onclick="window.openPairModal(!!window.W.currentPair)" class="text-xs text-blue-500 hover:text-blue-700">Change pair</button>
+        </div>
+        ${batsmenHtml}
+      </div>
+
+      <!-- bowler -->
+      <div>
+        <label class="text-xs font-medium text-gray-500 mb-1 block">Bowler — ${fieldingTeam()}</label>
+        <select id="bowlerSel" onchange="window.W.currentBowler=this.value" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+          ${bowlerOpts}
+        </select>
+      </div>
+
+      <!-- run buttons -->
+      <div class="grid grid-cols-3 gap-2">
+        ${[['0','bg-gray-100 text-gray-700','run',0],
+           ['1 run','bg-blue-50 text-blue-700 border border-blue-300','run',1],
+           ['2 runs','bg-emerald-50 text-emerald-700 border border-emerald-300','run',2],
+           ['4 runs','bg-amber-50 text-amber-700 border border-amber-400','run',4],
+           ['6 runs','bg-purple-50 text-purple-700 border border-purple-400','run',6],
+           ['🏏 Wicket','bg-orange-100 text-orange-700 border border-orange-300','wkt',0],
+           ['Wide +1','bg-red-50 text-red-700 border border-red-300','wd',0],
+           ['No Ball +1','bg-red-50 text-red-700 border border-red-300','nb',0],
+           ['↩ Undo','bg-white text-gray-500 border border-gray-200','undo',0]
+        ].map(([lbl,cls,act,val])=>`
+          <button onclick="window.recordBall('${act}',${val})" class="run-btn ${cls} ${act==='undo'&&!W.lastSnap?'opacity-40 cursor-not-allowed':''}">${lbl}</button>`
+        ).join('')}
+      </div>
+
+      <!-- summaries -->
+      ${batSummary?`<div class="bg-gray-50 rounded-xl p-3">
+        <div class="text-xs font-medium text-gray-500 mb-1.5">Batting — ${battingTeam()}</div>${batSummary}</div>`:''}
+      ${oversLog?`<div class="bg-gray-50 rounded-xl p-3">
+        <div class="text-xs font-medium text-gray-500 mb-1.5">Overs</div>${oversLog}</div>`:''}
+
+      ${inningsOver?`<div class="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-700 text-center font-medium">${W.overs} overs complete</div>`:''}
+
+      <button id="finishInningsBtn" class="w-full bg-green-900 text-white rounded-xl py-3 font-semibold hover:bg-green-950">
+        ${W.innings===1?'Complete Innings →':'Complete Match →'}
+      </button>
+    </div>
+  </div>`;
+}
+
+// ─── Innings break template ───────────────────────────────
+function tmplBreak() {
+  const inn = W.inn1;
+  const target = inn.net + 1;
+  const batRows = Object.entries(inn.batsmanStats).map(([n,s])=>`
+    <div class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+      <span class="font-medium">${n}</span>
+      <span><span class="font-bold text-blue-700">${s.runs}</span><span class="text-gray-400"> (${s.balls}b)</span>${s.wickets>0?`<span class="text-orange-500 ml-1">${s.wickets}W</span>`:''}</span>
+    </div>`).join('');
+  const bowlRows = Object.entries(inn.bowlerStats).map(([n,s])=>`
+    <div class="grid grid-cols-4 text-xs py-1 border-b border-gray-100 last:border-0">
+      <span class="col-span-2 font-medium">${n}</span>
+      <span class="text-right text-gray-600">${s.overs}</span>
+      <span class="text-right font-semibold">${s.runs}-${s.wickets}</span>
+    </div>`).join('');
+
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-gray-800 rounded-xl p-5 text-white text-center">
+      <div class="text-xs opacity-60 mb-1">Innings 1 complete</div>
+      <div class="text-5xl font-bold">${inn.net}<span class="text-2xl opacity-60"> (${inn.wickets}W)</span></div>
+      <div class="text-sm opacity-80 mt-1">${W.team1} · ${inn.overNum} overs</div>
+      <div class="text-xs opacity-50 mt-1">Gross ${inn.gross} − ${inn.penalties} penalty</div>
+    </div>
+    <div class="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
+      <div class="text-xs font-medium text-green-700 mb-1">${W.team2} need</div>
+      <div class="text-5xl font-bold text-green-800">${target}</div>
+      <div class="text-xs text-green-600 mt-1">to win in ${W.overs} overs</div>
+    </div>
+    <div class="bg-gray-50 rounded-xl p-3">
+      <div class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">${W.team1} — batting</div>
+      ${batRows}
+    </div>
+    ${bowlRows?`<div class="bg-gray-50 rounded-xl p-3">
+      <div class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">${W.team2} — bowling</div>
+      <div class="grid grid-cols-4 text-xs text-gray-400 font-medium mb-1">
+        <span class="col-span-2">Bowler</span><span class="text-right">Ov</span><span class="text-right">R-W</span>
+      </div>
+      ${bowlRows}</div>`:''}
+    <button id="startChaseBtn" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800">Start ${W.team2}'s Chase →</button>
+  </div>`;
+}
+
+// ─── Result template ──────────────────────────────────────
+function tmplResult() {
+  const inn1 = W.inn1;
+  const inn2Net = netScore();
+  const won = inn2Net >= inn1.net + 1;
+  const winner = won ? W.team2 : W.team1;
+  const margin = Math.abs(inn2Net - inn1.net);
+
+  const scoreBlock = (team, net, wickets, ovs, penalties, batsmanStats, bowlerStats) => `
+    <div class="bg-gray-50 rounded-xl p-3">
+      <div class="flex justify-between items-baseline mb-2">
+        <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">${team}</span>
+        <span class="text-sm font-bold">${net} (${wickets}W) ${ovs}ov</span>
+      </div>
+      ${penalties>0?`<div class="text-xs text-orange-600 mb-2">Penalty deducted: −${penalties}</div>`:''}
+      ${Object.entries(batsmanStats||{}).map(([n,s])=>`
+        <div class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+          <span class="font-medium">${n}</span>
+          <span><span class="font-bold text-blue-700">${s.runs}</span><span class="text-gray-400"> (${s.balls}b)</span>${s.wickets>0?`<span class="text-orange-500 ml-1">${s.wickets}W</span>`:''}</span>
+        </div>`).join('')}
+      ${Object.keys(bowlerStats||{}).length?`
+        <div class="mt-2 pt-2 border-t border-gray-200">
+          <div class="grid grid-cols-4 text-xs text-gray-400 font-medium mb-1">
+            <span class="col-span-2">Bowler</span><span class="text-right">Ov</span><span class="text-right">R-W</span>
+          </div>
+          ${Object.entries(bowlerStats).map(([n,s])=>`
+            <div class="grid grid-cols-4 text-xs py-0.5">
+              <span class="col-span-2">${n}</span>
+              <span class="text-right text-gray-600">${s.overs}</span>
+              <span class="text-right font-semibold">${s.runs}-${s.wickets}</span>
+            </div>`).join('')}
+        </div>`:''}</div>`;
+
+  return `<div class="flex flex-col gap-4">
+    <div class="bg-green-700 rounded-2xl p-5 text-white text-center">
+      <div class="text-3xl mb-1">🏆</div>
+      <div class="text-xl font-bold">${winner} won!</div>
+      <div class="text-green-200 text-sm mt-1">by ${margin} run${margin!==1?'s':''}</div>
+    </div>
+    ${scoreBlock(W.team1, inn1.net, inn1.wickets, inn1.overNum, inn1.penalties, inn1.batsmanStats, W.batsmanStats)}
+    ${scoreBlock(W.team2, inn2Net, W.wickets, Math.min(W.overNum,W.overs), W.penalties, W.batsmanStats, inn1.bowlerStats)}
+    <button id="newMatchBtn2" class="w-full bg-green-700 text-white rounded-xl py-3 font-semibold hover:bg-green-800">New Match</button>
+    <a href="stats.html" class="w-full block text-center text-xs text-blue-600 hover:underline py-1">View all player stats →</a>
+  </div>`;
+}
+
+// ── Wire step interactivity ───────────────────────────────
+function wireStep(step) {
+  if (step==='setup') {
+    document.getElementById('setupNextBtn').onclick = async () => {
+      W.team1   = document.getElementById('setupT1').value.trim();
+      W.team2   = document.getElementById('setupT2').value.trim();
+      W.date    = document.getElementById('setupDate').value;
+      if (!W.team1||!W.team2) return alert('Enter both team names');
+      setStep(1);
+    };
+  }
+  if (step==='squads') {
+    document.getElementById('squadsNextBtn').onclick = async () => {
+      if (W.squad1.length<2||W.squad2.length<2) return;
+      // create session + match in Supabase
+      const { data:sess } = await sb.from('cricket_sessions').insert({ date:W.date, notes:'' }).select('id').single();
+      W.sessionId = sess.id;
+      const { data:match } = await sb.from('cricket_matches').insert({
+        session_id:W.sessionId, team1_name:W.team1, team2_name:W.team2,
+        overs:W.overs, wicket_penalty:W.penalty, status:'innings1'
+      }).select('id').single();
+      W.matchId = match.id;
+      // save squads
+      const sq = [
+        ...W.squad1.map((p,i)=>({ match_id:W.matchId, team:1, player_id:p.id||null, guest_name:p.id?null:p.name, sort_order:i })),
+        ...W.squad2.map((p,i)=>({ match_id:W.matchId, team:2, player_id:p.id||null, guest_name:p.id?null:p.name, sort_order:i })),
+      ];
+      await sb.from('cricket_squads').insert(sq);
+      sessionStorage.setItem('activeCricketMatchId', W.matchId);
+      // reset scoring state
+      resetScoringState();
+      W.innings = 1;
+      W.currentBowler = fieldingSquad()[0] || '';
+      document.getElementById('wizardContainer').classList.remove('hidden');
+      setStep(2);
+      openPairModal(false);
+    };
+  }
+  if (step==='innings1'||step==='innings2') {
+    document.getElementById('finishInningsBtn').onclick = () => finishInnings();
+    // sync bowler select
+    const sel = document.getElementById('bowlerSel');
+    if (sel) sel.value = W.currentBowler;
+  }
+  if (step==='break') {
+    document.getElementById('startChaseBtn').onclick = () => {
+      resetScoringState();
+      W.innings = 2;
+      W.currentBowler = fieldingSquad()[0] || '';
+      sb.from('cricket_matches').update({ status:'innings2' }).eq('id',W.matchId);
+      setStep(4);
+      openPairModal(false);
+    };
+  }
+  if (step==='result') {
+    document.getElementById('newMatchBtn2')?.addEventListener('click', resetWizard);
+  }
+}
+
+function resetScoringState() {
+  W.score=0; W.penalties=0; W.wickets=0;
+  W.overNum=1; W.balls=[]; W.allOvers=[];
+  W.batsmanStats={}; W.bowlerStats={};
+  W.pairHistory=[]; W.currentPair=null;
+  W.striker=0; W.overJustDone=false; W.lastSnap=null;
+}
+
+function resetWizard() {
+  Object.assign(W, {
+    step:0, matchId:null, sessionId:null,
+    team1:'', team2:'', overs:6, penalty:5,
+    squad1:[], squad2:[], innings:1, inn1:null,
+  });
+  resetScoringState();
+  sessionStorage.removeItem('activeCricketMatchId');
+  document.getElementById('wizardContainer').classList.add('hidden');
+  loadRecentMatches();
+}
+
+// ── Global helpers (called from inline onclick) ───────────
+window.W = W;
+window.adj = (key, delta) => {
+  if (key==='overs')   W.overs   = Math.max(1, Math.min(50, W.overs+delta));
+  if (key==='penalty') W.penalty = Math.max(0, W.penalty+delta);
+  document.getElementById(key+'Val').textContent = W[key];
+};
+window.setStriker = (i) => { W.striker=i; renderStep(); };
+
+// Load registered players from DB into W.registeredPlayers
+async function loadRegisteredPlayers() {
+  const { data } = await sb.from('players').select('id,name').eq('is_active', true).order('name');
+  W.registeredPlayers = data || [];
+}
+
+window.addPlayerFromSelect = (prefix) => {
+  const sel = document.getElementById(prefix+'Sel');
+  const val = sel?.value;
+  if (!val) return;
+  if (val === '__guest__') {
+    // show guest name input
+    document.getElementById(prefix+'GuestRow').classList.remove('hidden');
+    sel.value = '';
+    return;
+  }
+  const player = W.registeredPlayers.find(p => p.id === val);
+  if (!player) return;
+  const arr = prefix==='sq1' ? W.squad1 : W.squad2;
+  // prevent duplicates across both squads
+  const allIds = [...W.squad1,...W.squad2].filter(p=>p.id).map(p=>p.id);
+  if (allIds.includes(player.id)) { sel.value=''; return; }
+  arr.push({ id: player.id, name: player.name });
+  sel.value = '';
+  renderStep();
+};
+
+window.addGuest = (prefix) => {
+  const input = document.getElementById(prefix+'GuestInput');
+  const name  = input?.value?.trim();
+  if (!name) return;
+  const arr = prefix==='sq1' ? W.squad1 : W.squad2;
+  if (arr.some(p=>p.name===name)) { input.value=''; return; }
+  arr.push({ id: null, name });  // id=null marks guest
+  input.value='';
+  document.getElementById(prefix+'GuestRow').classList.add('hidden');
+  renderStep();
+};
+
+window.removePlayer = (prefix, name) => {
+  if (prefix==='sq1') W.squad1 = W.squad1.filter(p=>p.name!==name);
+  else                W.squad2 = W.squad2.filter(p=>p.name!==name);
+  renderStep();
+};
+
+// ── Pair modal ────────────────────────────────────────────
+window.openPairModal = (allowKeep) => {
+  const sq = battingSquad(); // [{id, name}]
+  const p1sel = document.getElementById('pairP1');
+  const p2sel = document.getElementById('pairP2');
+  // use index as option value so we can retrieve the full {id,name} object
+  const opts = sq.map((p,i)=>`<option value="${i}">${p.name}${!p.id?' (guest)':''}</option>`).join('');
+  p1sel.innerHTML = opts;
+  p2sel.innerHTML = opts;
+  if (W.currentPair) {
+    const i1 = sq.findIndex(p=>p.name===W.currentPair.p1.name);
+    const i2 = sq.findIndex(p=>p.name===W.currentPair.p2.name);
+    if (i1>=0) p1sel.value=i1; if (i2>=0) p2sel.value=i2;
+  } else if (sq.length >= 2) {
+    p1sel.value=0; p2sel.value=1;
+  }
+  document.getElementById('pairModalTitle').textContent = allowKeep ? `Over ${W.overNum} — change pair?` : `Over ${W.overNum} — select pair`;
+  document.getElementById('pairModalSub').textContent   = battingTeam() + ' batting';
+  document.getElementById('pairKeepBtn').classList.toggle('hidden', !allowKeep || !W.currentPair);
+  document.getElementById('pairModal').classList.remove('hidden');
+};
+
+window.keepPair = () => {
+  W.overJustDone = false;
+  renderStep();
+};
+
+document.getElementById('pairKeepBtn').onclick = () => {
+  document.getElementById('pairModal').classList.add('hidden');
+  W.overJustDone = false;
+  renderStep();
+};
+
+document.getElementById('pairConfirmBtn').onclick = () => {
+  const sq = battingSquad();
+  const i1 = Number(document.getElementById('pairP1').value);
+  const i2 = Number(document.getElementById('pairP2').value);
+  if (i1===i2) { document.getElementById('pairModalError').classList.remove('hidden'); return; }
+  document.getElementById('pairModalError').classList.add('hidden');
+  document.getElementById('pairModal').classList.add('hidden');
+  W.currentPair = { p1: sq[i1], p2: sq[i2] }; // full {id,name} objects
+  W.striker = 0;
+  W.pairHistory.push({ overNum:W.overNum, p1:sq[i1], p2:sq[i2] });
+  W.overJustDone = false;
+  renderStep();
+};
+
+// ── Wicket modal ──────────────────────────────────────────
+function openWktModal() {
+  const batsmanName = W.striker===0 ? W.currentPair?.p1?.name : W.currentPair?.p2?.name;
+  document.getElementById('wktPenaltyMsg').textContent = `−${W.penalty} run penalty`;
+  document.getElementById('wktBowlerMsg').textContent  = `Bowler: ${W.currentBowler} gets +1 wicket`;
+  document.getElementById('wktModal').classList.remove('hidden');
+}
+document.getElementById('wktCancelBtn').onclick = () => document.getElementById('wktModal').classList.add('hidden');
+document.getElementById('wktConfirmBtn').onclick = async () => {
+  document.getElementById('wktModal').classList.add('hidden');
+  const batsmanName = W.striker===0 ? W.currentPair.p1 : W.currentPair.p2;
+  const newBalls = [...W.balls, { type:'wkt', runs:0, extra:false }];
+  W.penalties += W.penalty;
+  W.wickets++;
+  W.balls = newBalls;
+  // bowler gets wicket
+  const bs = W.bowlerStats[W.currentBowler] || {overs:0,runs:0,wickets:0};
+  W.bowlerStats[W.currentBowler] = {...bs, wickets:bs.wickets+1};
+  // batsman stat
+  const bt = W.batsmanStats[batsmanName] || {runs:0,balls:0,wickets:0};
+  W.batsmanStats[batsmanName] = {...bt, balls:bt.balls+1, wickets:bt.wickets+1};
+  // write ball to DB
+  await writeBall({ type:'wkt', runs:0, extra:false, batsmanName });
+  const legal = newBalls.filter(b=>!b.extra).length;
+  if (legal===6) await finishOver(newBalls);
+  else renderStep();
+};
+
+// ── Ball recording ────────────────────────────────────────
+window.recordBall = async (act, val) => {
+  if (act==='undo') { restoreSnap(); renderStep(); return; }
+  if (!W.currentPair || W.overJustDone) return;
+  if (W.overNum > W.overs) return;
+  if (act==='wkt') { snap(); openWktModal(); return; }
+
+  snap();
+  const batsmanName = W.striker===0 ? W.currentPair.p1 : W.currentPair.p2;
+
+  if (act==='wd'||act==='nb') {
+    W.balls.push({ type:act, runs:1, extra:true });
+    W.score++;
+    await writeBall({ type:act, runs:1, extra:true, batsmanName });
+  } else {
+    const runs = val;
+    W.balls.push({ type:`run${runs}`, runs, extra:false });
+    W.score += runs;
+    const bt = W.batsmanStats[batsmanName]||{runs:0,balls:0,wickets:0};
+    W.batsmanStats[batsmanName] = {...bt, runs:bt.runs+runs, balls:bt.balls+1};
+    if (runs%2!==0) W.striker = 1-W.striker;
+    await writeBall({ type:`run${runs}`, runs, extra:false, batsmanName });
+    const legal = W.balls.filter(b=>!b.extra).length;
+    if (legal===6) { await finishOver(W.balls); return; }
+  }
+  renderStep();
+};
+
+// ── Over completion ───────────────────────────────────────
+async function finishOver(balls) {
+  const overRuns = balls.reduce((s,b)=>s+b.runs,0);
+  W.allOvers.push({ num:W.overNum, bowler:W.currentBowler, balls:[...balls], runs:overRuns });
+  const bs = W.bowlerStats[W.currentBowler]||{overs:0,runs:0,wickets:0};
+  W.bowlerStats[W.currentBowler] = {...bs, overs:bs.overs+1, runs:bs.runs+overRuns};
+  // write over to DB
+  // find bowler's player_id from squads
+  const bowlerObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===W.currentBowler);
+  await sb.from('cricket_overs').insert({
+    match_id:W.matchId, innings:W.innings, over_number:W.overNum,
+    bowler_id:       bowlerObj?.id || null,
+    bowler_guest:    bowlerObj?.id ? null : W.currentBowler,
+    striker_id:      W.currentPair?.p1?.id || null,
+    non_striker_id:  W.currentPair?.p2?.id || null,
+    runs_scored:overRuns, wickets:balls.filter(b=>b.type==='wkt').length
+  });
+  W.balls = [];
+  W.overNum++;
+  W.striker = 1-W.striker;
+  W.overJustDone = true;
+  renderStep();
+}
+
+// ── Write ball to DB ──────────────────────────────────────
+async function writeBall({ type, runs, extra, batsmanName }) {
+  // get the latest over id
+  const { data:ovRow } = await sb.from('cricket_overs')
+    .select('id').eq('match_id',W.matchId).eq('innings',W.innings)
+    .eq('over_number',W.overNum).maybeSingle();
+  if (!ovRow) return; // over not saved yet — balls are saved at over completion
+  const legalSoFar = W.balls.filter(b=>!b.extra).length;
+  const batsmanObj = [...(W.squad1||[]),...(W.squad2||[])].find(p=>p.name===batsmanName);
+  await sb.from('cricket_balls').insert({
+    over_id:ovRow.id, ball_number:extra?0:legalSoFar,
+    batsman_id:    batsmanObj?.id || null,
+    batsman_guest: batsmanObj?.id ? null : batsmanName,
+    runs,
+    extra_type: extra ? type : null,
+    is_wicket: type==='wkt'
+  });
+}
+
+// ── Finish innings ────────────────────────────────────────
+async function finishInnings() {
+  const net = netScore();
+  if (W.innings===1) {
+    W.inn1 = {
+      net, gross:W.score, wickets:W.wickets, penalties:W.penalties,
+      overNum:Math.min(W.overNum,W.overs),
+      batsmanStats:{...W.batsmanStats}, bowlerStats:{...W.bowlerStats}
+    };
+    await sb.from('cricket_matches').update({
+      status:'break',
+      innings1_gross:W.score, innings1_penalty:W.penalties,
+      innings1_net:net, innings1_wickets:W.wickets
+    }).eq('id',W.matchId);
+    setStep(3);
+  } else {
+    const inn2Net = net;
+    const won = inn2Net >= W.inn1.net + 1;
+    await sb.from('cricket_matches').update({
+      status:'complete',
+      innings2_gross:W.score, innings2_penalty:W.penalties,
+      innings2_net:inn2Net, innings2_wickets:W.wickets,
+      winner_team: won ? W.team2 : W.team1
+    }).eq('id',W.matchId);
+    sessionStorage.removeItem('activeCricketMatchId');
+    loadRecentMatches();
+    setStep(5);
+  }
+}
+
+// ── Render admin panel HTML into the mount point ──────────
+function renderAdminMount(user) {
+  document.getElementById('adminMount').innerHTML = `
+    <section id="adminSection">
+      <div class="bg-white rounded-2xl shadow p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold text-green-800">🏏 Scoring App — Admin</h2>
+          <div class="flex gap-2">
+            <button id="newMatchBtn" class="text-xs px-3 py-1.5 bg-green-700 text-white rounded-full font-medium hover:bg-green-800">+ New Match</button>
+            <button id="signOutBtn"  class="text-xs px-3 py-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200">Sign out</button>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400">Signed in as <strong>${user.email}</strong></p>
+      </div>
+      <div id="wizardContainer" class="hidden">
+        <div class="flex items-center gap-2 mb-4 px-1">
+          <div id="dot0" class="step-dot active"></div>
+          <div id="dot1" class="step-dot pending"></div>
+          <div id="dot2" class="step-dot pending"></div>
+          <div id="dot3" class="step-dot pending"></div>
+          <div id="dot4" class="step-dot pending"></div>
+          <div id="dot5" class="step-dot pending"></div>
+          <span id="wizardStepLabel" class="text-xs text-gray-400 ml-2">Step 1 / 6</span>
+        </div>
+        <div id="wizardStep"></div>
+      </div>
+    </section>`;
+
+  document.getElementById('newMatchBtn').onclick = () => {
+    resetWizard();
+    document.getElementById('wizardContainer').classList.remove('hidden');
+    setStep(0);
+  };
+  document.getElementById('signOutBtn').onclick = async () => {
+    await sb.auth.signOut();
+    document.getElementById('adminMount').innerHTML = '';
+    document.getElementById('adminToggle').textContent = 'Admin';
+    renderSignInPrompt();
+  };
+}
+
+function renderSignInPrompt() {
+  document.getElementById('adminMount').innerHTML = `
+    <section>
+      <div class="bg-white rounded-2xl shadow p-5 text-center mt-6">
+        <div class="text-3xl mb-2">🔐</div>
+        <div class="font-semibold mb-1">Admin sign-in required</div>
+        <p class="text-xs text-gray-400 mb-4">Scoring App is restricted to admins only</p>
+        <button id="signInBtn" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700">Send magic link</button>
+      </div>
+    </section>`;
+  document.getElementById('signInBtn').onclick = async () => {
+    const email = prompt('Enter your admin email:');
+    if (!email) return;
+    const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL } });
+    alert(error ? error.message : 'Magic link sent! Check your inbox.');
+  };
+}
+
+// ── Admin toggle — auth-gate ───────────────────────────────
+let adminPanelOpen = false;
+document.getElementById('adminToggle').onclick = async () => {
+  adminPanelOpen = !adminPanelOpen;
+  const mount = document.getElementById('adminMount');
+
+  if (!adminPanelOpen) {
+    mount.innerHTML = '';
+    document.getElementById('adminToggle').textContent = 'Admin';
+    return;
+  }
+
+  document.getElementById('adminToggle').textContent = 'Close';
+  mount.innerHTML = '<p class="text-xs text-gray-400 mt-6 text-center">Checking auth…</p>';
+
+  const user = await getUser();
+  if (user) {
+    renderAdminMount(user);
+    if (!W.registeredPlayers) await loadRegisteredPlayers();
+  } else {
+    renderSignInPrompt();
+  }
+};
+
+// ── Handle magic-link callback (detectSessionInUrl) ────────
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' && session && adminPanelOpen) {
+    renderAdminMount(session.user);
+    if (!W.registeredPlayers) await loadRegisteredPlayers();
+  }
+});
+
+// ── addPlayerByIndex helper (no quote escaping needed) ─────
+window.removePlayerByIndex = (prefix, idx) => {
+  if (prefix === 'sq1') W.squad1.splice(idx, 1);
+  else                  W.squad2.splice(idx, 1);
+  renderStep();
+};
+
+// ── Better error handling for loadRecentMatches ────────────
+async function safeLoadRecentMatches() {
+  try {
+    await loadRecentMatches();
+  } catch(e) {
+    document.getElementById('recentMatchesList').innerHTML =
+      '<p class="text-sm text-gray-400">Could not load matches. Run the cricket_schema.sql first.</p>';
+  }
+}
+
+safeLoadRecentMatches();
+</script>
+</body>
+</html>
