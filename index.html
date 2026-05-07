@@ -17,6 +17,7 @@
     .av-red  { background:#FCEBEB; color:#A32D2D; }
     .av-grn  { background:#EAF3DE; color:#3B6D11; }
     .av-gry  { background:#f3f4f6; color:#6b7280; }
+    .av-teal { background:#E1F5EE; color:#0F6E56; }
     .av-blu  { background:#E6F1FB; color:#185FA5; }
     .pr-bar-bg { height:3px; background:#e5e7eb; border-radius:2px; overflow:hidden; margin-top:4px; }
     .pr-bar-fill { height:3px; border-radius:2px; }
@@ -62,8 +63,8 @@
           <div class="flex flex-wrap items-center gap-2">
             <!-- Filter tabs -->
             <div class="flex gap-1" id="balFilterTabs">
-              <button data-filter="all"      class="bal-tab bal-tab-active text-xs px-3 py-1 rounded-full border">All</button>
-              <button data-filter="owes"     class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Owes</button>
+              <button data-filter="all"      class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">All</button>
+              <button data-filter="owes"     class="bal-tab bal-tab-active text-xs px-3 py-1 rounded-full border">Owes</button>
               <button data-filter="credit"   class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Credit</button>
               <button data-filter="settled"  class="bal-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Settled</button>
             </div>
@@ -85,9 +86,16 @@
       <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 class="text-lg font-semibold">Sessions</h2>
-          <div class="flex gap-1" id="sessTabBar">
-            <button data-tab="split" class="sess-tab sess-tab-active text-xs px-3 py-1 rounded-full border">Payment split</button>
-            <button data-tab="att"   class="sess-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Attendance</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex gap-1" id="sessTabBar">
+              <button data-tab="split" class="sess-tab sess-tab-active text-xs px-3 py-1 rounded-full border">Payment split</button>
+              <button data-tab="att"   class="sess-tab text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">Attendance</button>
+            </div>
+            <div class="flex items-center gap-2" id="sessPager">
+              <button id="sessPrev" class="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-40">← Prev</button>
+              <span id="sessPageInfo" class="text-xs text-gray-500 min-w-16 text-center">1 / 1</span>
+              <button id="sessNext" class="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-40">Next →</button>
+            </div>
           </div>
         </div>
         <div id="sessPane-split">
@@ -100,9 +108,14 @@
 
       <!-- Expenses timeline + Attendance leaderboard side by side on desktop -->
       <div class="bg-white rounded-2xl shadow p-4">
-        <div class="flex items-center justify-between mb-1">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h2 class="text-lg font-semibold">Recent Expenses</h2>
-          <div id="expTotalStrip" class="text-xs text-gray-400"></div>
+          <div class="flex items-center gap-2">
+            <div id="expTotalStrip" class="text-xs text-gray-400"></div>
+            <button id="expPrev" class="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-40">← Prev</button>
+            <span id="expPageInfo" class="text-xs text-gray-500 min-w-12 text-center">1 / 1</span>
+            <button id="expNext" class="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-40">Next →</button>
+          </div>
         </div>
         <p class="text-xs text-gray-400 mb-3">Tap a player dot to open their breakdown</p>
         <div id="expensesBody"><p class="text-sm text-gray-400 py-2">No expenses yet.</p></div>
@@ -355,14 +368,20 @@
       const rows = SPLIT.data;
       if (!rows.length) {
         body.innerHTML = '<p class="text-sm text-gray-400 py-2">No split records yet.</p>';
+        updateSessPager();
         return;
       }
-      /* group by date */
-      const byDate = new Map();
+      /* group by date — all dates first, then slice for current page */
+      const allByDate = new Map();
       for (const r of rows) {
-        if (!byDate.has(r.date)) byDate.set(r.date, []);
-        byDate.get(r.date).push(r);
+        if (!allByDate.has(r.date)) allByDate.set(r.date, []);
+        allByDate.get(r.date).push(r);
       }
+      updateSessPager();
+      const allDates = [...allByDate.keys()];
+      const start = (SESS_PAGE.page - 1) * SESS_PAGE.pageSize;
+      const pageDates = allDates.slice(start, start + SESS_PAGE.pageSize);
+      const byDate = new Map(pageDates.map(d => [d, allByDate.get(d)]));
       const avColors = ['#E6F1FB:#185FA5','#EAF3DE:#3B6D11','#FCEBEB:#A32D2D','#f3f4f6:#6b7280','#FAEEDA:#633806'];
       body.innerHTML = [...byDate.entries()].map(([date, items]) => {
         const dayTotal    = items.reduce((s,r) => s + Number(r.split_amount), 0);
@@ -423,6 +442,41 @@
     /* ===== Session state ===== */
     const PUB_ATT = { data: [] };
     const SPLIT   = { data: [] };
+    const SESS_PAGE = { page: 1, pageSize: 4, activeTab: 'split' };
+    const EXP_PAGE  = { page: 1, pageSize: 4, allData: [] };
+
+    function sessTotalPages() {
+      const data = SESS_PAGE.activeTab === 'split'
+        ? [...new Map(SPLIT.data.map(r => [r.date, true])).keys()]
+        : [...new Map(PUB_ATT.data.map(r => [r.date, true])).keys()];
+      return Math.max(1, Math.ceil(data.length / SESS_PAGE.pageSize));
+    }
+
+    function updateSessPager() {
+      const pages = sessTotalPages();
+      SESS_PAGE.page = Math.min(Math.max(1, SESS_PAGE.page), pages);
+      const info = document.getElementById('sessPageInfo');
+      const prev = document.getElementById('sessPrev');
+      const next = document.getElementById('sessNext');
+      if (info) info.textContent = `${SESS_PAGE.page} / ${pages}`;
+      if (prev) prev.disabled = SESS_PAGE.page <= 1;
+      if (next) next.disabled = SESS_PAGE.page >= pages;
+    }
+
+    function expTotalPages() {
+      return Math.max(1, Math.ceil(EXP_PAGE.allData.length / EXP_PAGE.pageSize));
+    }
+
+    function updateExpPager() {
+      const pages = expTotalPages();
+      EXP_PAGE.page = Math.min(Math.max(1, EXP_PAGE.page), pages);
+      const info = document.getElementById('expPageInfo');
+      const prev = document.getElementById('expPrev');
+      const next = document.getElementById('expNext');
+      if (info) info.textContent = `${EXP_PAGE.page} / ${pages}`;
+      if (prev) prev.disabled = EXP_PAGE.page <= 1;
+      if (next) next.disabled = EXP_PAGE.page >= pages;
+    }
 
     function renderPublicAttendance() {
       const body = document.getElementById('attGridBody');
@@ -430,14 +484,21 @@
       const rows = PUB_ATT.data;
       if (!rows.length) {
         body.innerHTML = '<p class="text-sm text-gray-400 py-2">No attendance recorded yet.</p>';
+        updateSessPager();
         return;
       }
-      /* group by date, collect player names + slots */
-      const byDate = new Map();
+      /* group all by date, then slice for current page */
+      const allByDate = new Map();
       for (const r of rows) {
-        if (!byDate.has(r.date)) byDate.set(r.date, []);
-        byDate.get(r.date).push({ name: r.players?.name ?? '?', slots: Number(r.slots) });
+        if (!allByDate.has(r.date)) allByDate.set(r.date, []);
+        allByDate.get(r.date).push({ name: r.players?.name ?? '?', slots: Number(r.slots) });
       }
+      updateSessPager();
+      const allDates = [...allByDate.keys()];
+      const start = (SESS_PAGE.page - 1) * SESS_PAGE.pageSize;
+      const pageDates = allDates.slice(start, start + SESS_PAGE.pageSize);
+      /* group by date, collect player names + slots */
+      const byDate = new Map(pageDates.map(d => [d, allByDate.get(d)]));
       /* all unique players across all sessions for the grid header */
       const allPlayers = [...new Set(rows.map(r => r.players?.name ?? '?'))].sort();
       const avColors = ['#E6F1FB:#185FA5','#EAF3DE:#3B6D11','#FCEBEB:#A32D2D','#f3f4f6:#6b7280','#FAEEDA:#633806'];
@@ -459,12 +520,15 @@
       }).join('');
     }
 
-    // Wire session tab bar only — pagers removed (tables replaced with visual renders)
+    // Wire session tab bar + pager buttons
     document.addEventListener('DOMContentLoaded', () => {
+      // Session tab switching
       document.getElementById('sessTabBar').addEventListener('click', e => {
         const btn = e.target.closest('.sess-tab');
         if (!btn) return;
         const tab = btn.dataset.tab;
+        SESS_PAGE.activeTab = tab;
+        SESS_PAGE.page = 1;
         document.querySelectorAll('.sess-tab').forEach(b => {
           b.classList.toggle('sess-tab-active', b === btn);
           if (b !== btn) { b.classList.add('border-gray-200','text-gray-500'); b.classList.remove('border-blue-800'); }
@@ -473,6 +537,38 @@
         ['split','att'].forEach(t => {
           document.getElementById('sessPane-'+t).classList.toggle('hidden', t !== tab);
         });
+        if (tab === 'split') renderSessionSplits();
+        else renderPublicAttendance();
+      });
+
+      // Session pager
+      document.getElementById('sessPrev').addEventListener('click', () => {
+        if (SESS_PAGE.page > 1) {
+          SESS_PAGE.page--;
+          if (SESS_PAGE.activeTab === 'split') renderSessionSplits();
+          else renderPublicAttendance();
+        }
+      });
+      document.getElementById('sessNext').addEventListener('click', () => {
+        if (SESS_PAGE.page < sessTotalPages()) {
+          SESS_PAGE.page++;
+          if (SESS_PAGE.activeTab === 'split') renderSessionSplits();
+          else renderPublicAttendance();
+        }
+      });
+
+      // Expense pager
+      document.getElementById('expPrev').addEventListener('click', () => {
+        if (EXP_PAGE.page > 1) {
+          EXP_PAGE.page--;
+          renderExpenses(window.__lastExpenseRows || []);
+        }
+      });
+      document.getElementById('expNext').addEventListener('click', () => {
+        if (EXP_PAGE.page < expTotalPages()) {
+          EXP_PAGE.page++;
+          renderExpenses(window.__lastExpenseRows || []);
+        }
       });
     });
 
@@ -492,6 +588,7 @@
       if (!rows.length) {
         body.innerHTML = '<p class="text-sm text-gray-400 py-2">No expenses yet.</p>';
         if (strip) strip.textContent = '';
+        updateExpPager();
         return;
       }
 
@@ -501,12 +598,20 @@
         if (!attByDate.has(r.date)) attByDate.set(r.date, []);
         attByDate.get(r.date).push({ name: r.players?.name ?? '?', slots: Number(r.slots ?? 1) });
       }
-      /* group same-date expenses */
-      const byDate = new Map();
+
+      /* group ALL expenses by date first */
+      const allByDate = new Map();
       for (const r of rows) {
-        if (!byDate.has(r.date)) byDate.set(r.date, []);
-        byDate.get(r.date).push(r);
+        if (!allByDate.has(r.date)) allByDate.set(r.date, []);
+        allByDate.get(r.date).push(r);
       }
+
+      /* update pager with full date count, then slice to current page */
+      EXP_PAGE.allData = [...allByDate.keys()];
+      updateExpPager();
+      const pageStart = (EXP_PAGE.page - 1) * EXP_PAGE.pageSize;
+      const pageDates = EXP_PAGE.allData.slice(pageStart, pageStart + EXP_PAGE.pageSize);
+      const byDate    = new Map(pageDates.map(d => [d, allByDate.get(d)]));
 
       const grandTotal = rows.reduce((s,r)=>s+Number(r.amount),0);
       if (strip) strip.textContent = `Total $${grandTotal.toFixed(2)}`;
@@ -570,7 +675,7 @@
     }
 
     /* ===== Balance card state ===== */
-    const BAL = { data: [], filter: 'all', sort: 'debt' };
+    const BAL = { data: [], filter: 'owes', sort: 'debt' };
 
     function balStatus(bal) {
       if (bal > 0)  return 'owes';
@@ -579,7 +684,7 @@
     }
 
     function renderBalances(rows) {
-      BAL.data = (rows || []).map(r => ({ ...r, _bal: Number(r.balance) }));
+      BAL.data = (rows || []).map(r => ({ ...r, _bal: Math.round(Number(r.balance) * 100) / 100 }));
       applyBalanceView();
       wireBalanceControls();
     }
@@ -636,13 +741,13 @@
         const pct    = owed > 0 ? Math.min(100, Math.round((paid/owed)*100)) : 100;
         const sess   = sessMap.get(r.name) || 0;
 
-        const avCls  = status==='owes' ? 'av-red' : status==='credit' ? 'av-grn' : 'av-gry';
-        const tagCls = status==='owes' ? 'bg-red-50 text-red-700' : status==='credit' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500';
+        const avCls  = status==='owes' ? 'av-red' : status==='credit' ? 'av-grn' : 'av-blu';
+        const tagCls = status==='owes' ? 'bg-red-50 text-red-700' : status==='credit' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-600';
         const tagTxt = status==='owes' ? `owes $${bal.toFixed(2)}` : status==='credit' ? `+$${Math.abs(bal).toFixed(2)}` : 'settled';
-        const amtCls = status==='owes' ? 'text-red-600' : status==='credit' ? 'text-emerald-700' : 'text-gray-400';
+        const amtCls = status==='owes' ? 'text-red-600' : status==='credit' ? 'text-emerald-700' : 'text-blue-600';
         const amtTxt = status==='owes' ? `-$${bal.toFixed(2)}` : status==='credit' ? `+$${Math.abs(bal).toFixed(2)}` : '$0.00';
-        const barCol = status==='owes' ? '#ef4444' : status==='credit' ? '#22c55e' : '#9ca3af';
-        const dimCls = status==='settled' ? 'dim' : '';
+        const barCol = status==='owes' ? '#ef4444' : status==='credit' ? '#22c55e' : '#3b82f6';
+        const dimCls = '';
 
         const __pk = __prIdx++; window.__playerRegistry[__pk] = r.name;
         return `<div class="player-row ${dimCls}" onclick="openPlayerDrawer(${__pk})">
@@ -710,6 +815,7 @@
 
       renderPlayers(players);
       renderBalances(balances);
+      window.__lastExpenseRows = expenses || [];
       renderExpenses(expenses);
 
       SPLIT.data = splits || [];
@@ -789,7 +895,7 @@
       const bal        = balRaw !== null ? Math.round(balRaw * 100) / 100 : null;
       const totalOwedLedger  = balRow ? Number(balRow.total_owed) : null;
       const totalPaidLedger  = balRow ? Number(balRow.total_paid) : null;
-      const avCls = bal === null ? 'av-gry' : bal > 0 ? 'av-red' : bal < 0 ? 'av-grn' : 'av-gry';
+      const avCls = bal === null ? 'av-gry' : bal > 0 ? 'av-red' : bal < 0 ? 'av-grn' : 'av-blu';
       document.getElementById('drawerAv').className = `av ${avCls}`;
       document.getElementById('drawerAv').textContent = ini;
       document.getElementById('drawerName').textContent = name;
@@ -811,8 +917,8 @@
 
       const paidLbl  = totalPaidLedger !== null ? `$${totalPaidLedger.toFixed(2)}` : '—';
       const owedLbl  = totalOwedLedger !== null ? `$${totalOwedLedger.toFixed(2)}` : '—';
-      const balColBg = bal === null ? '#f3f4f6' : bal > 0 ? '#FCEBEB' : bal < 0 ? '#EAF3DE' : '#f3f4f6';
-      const balColFg = bal === null ? '#6b7280' : bal > 0 ? '#A32D2D' : bal < 0 ? '#3B6D11' : '#6b7280';
+      const balColBg = bal === null ? '#f3f4f6' : bal > 0 ? '#FCEBEB' : bal < 0 ? '#EAF3DE' : '#EFF6FF';
+      const balColFg = bal === null ? '#6b7280' : bal > 0 ? '#A32D2D' : bal < 0 ? '#3B6D11' : '#1d4ed8';
       const balSign  = bal !== null && bal < 0 ? '+' : bal !== null && bal > 0 ? '−' : '';
       const balAmt   = bal !== null ? `${balSign}$${Math.abs(bal).toFixed(2)}` : '—';
 
