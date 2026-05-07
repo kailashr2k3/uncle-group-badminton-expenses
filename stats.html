@@ -94,29 +94,42 @@ let allOvers = [], allBalls = [];
 
 // ── Load data ──
 async function loadAll() {
-  const [b, w, m, o, bl] = await Promise.all([
+  const [b, w, m] = await Promise.all([
     sb.from('cricket_batting_stats').select('*'),
     sb.from('cricket_bowling_stats').select('*'),
     sb.from('cricket_match_summary').select('*').order('date', { ascending:false }),
-    // Join player names so we can filter by name client-side
-    sb.from('cricket_overs').select('*, bowler:players!cricket_overs_bowler_id_fkey(name)'),
-    sb.from('cricket_balls').select('*, batsman:players!cricket_balls_batsman_id_fkey(name)'),
   ]);
-  batting  = b.data || [];
-  bowling  = w.data || [];
-  matches  = m.data || [];
-  // Normalise: add bowler_name and batsman_name fields for easy filtering
-  allOvers = (o.data || []).map(ov => ({
-    ...ov,
-    bowler_name: ov.bowler?.name || ov.bowler_guest || null,
-  }));
-  allBalls = (bl.data || []).map(b => ({
-    ...b,
-    batsman_name: b.batsman?.name || b.batsman_guest || null,
-  }));
+  batting = b.data || [];
+  bowling = w.data || [];
+  matches = m.data || [];
+  // allOvers and allBalls are loaded lazily per-player in the drawer
   renderBatting();
   renderBowling();
   renderMatches();
+}
+
+// Per-player drill-down: fetch from views filtered by player_id
+async function loadPlayerStats(playerName) {
+  // Get the player_id for this name
+  const batRow = batting.find(r => r.player_name === playerName) || {};
+  const bowRow = bowling.find(r => r.player_name === playerName) || {};
+  const playerId = batRow.player_id || bowRow.player_id;
+
+  if (!playerId) {
+    // Guest player — fetch by guest name columns
+    const [ovRes, blRes] = await Promise.all([
+      sb.from('cricket_overs').select('id,match_id,innings,over_number,runs_scored,wickets,bowler_guest').eq('bowler_guest', playerName),
+      sb.from('cricket_balls').select('id,over_id,runs,extra_type,is_wicket,batsman_guest').eq('batsman_guest', playerName),
+    ]);
+    return { overs: ovRes.data||[], balls: blRes.data||[], isGuest: true };
+  }
+
+  // Registered player — fetch by player_id
+  const [ovRes, blRes] = await Promise.all([
+    sb.from('cricket_overs').select('id,match_id,innings,over_number,runs_scored,wickets').eq('bowler_id', playerId),
+    sb.from('cricket_balls').select('id,over_id,runs,extra_type,is_wicket').eq('batsman_id', playerId),
+  ]);
+  return { overs: ovRes.data||[], balls: blRes.data||[], isGuest: false };
 }
 
 // ── Tab switching ──
@@ -264,30 +277,36 @@ window.sortBy = (key) => {
 };
 
 // ── Player drawer ──
-window.openPlayerDrawer = (name) => {
+window.openPlayerDrawer = async (name) => {
   document.getElementById('sdAv').textContent = ini(name);
   document.getElementById('sdName').textContent = name;
-  // aggregate from raw data
   const batRow = batting.find(r=>r.player_name===name)||{};
   const bowRow = bowling.find(r=>r.player_name===name)||{};
   document.getElementById('sdMeta').textContent =
     `${batRow.total_runs||0} runs · ${bowRow.wickets||0} wkts · ${batRow.matches||bowRow.matches||0} matches`;
 
-  // batting pane
-  // per-match batting: group balls by match via overs
-  const playerBalls = allBalls.filter(b=>b.batsman_name===name);
-  const overIds = new Set(playerBalls.map(b=>b.over_id));
-  // group by match via overs
+  // show drawer immediately with loading state
+  document.getElementById('stab-batting').innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">Loading…</p>';
+  document.getElementById('stab-bowling').innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">Loading…</p>';
+  document.getElementById('statsDrawer').classList.add('open');
+  document.body.style.overflow='hidden';
+
+  // fetch player-specific data
+  const { overs: playerOvers, balls: playerBalls } = await loadPlayerStats(name);
+
+  // Build over→match lookup
+  const overMatchMap = Object.fromEntries(playerOvers.map(o=>[o.id, o.match_id]));
+
+  // Batting — group balls by match
   const matchRunMap = {};
   for (const b of playerBalls) {
-    const ov = allOvers.find(o=>o.id===b.over_id);
-    if (!ov) continue;
-    const mid = ov.match_id;
+    const mid = overMatchMap[b.over_id];
+    if (!mid) continue;
     if (!matchRunMap[mid]) matchRunMap[mid]={runs:0,balls:0,fours:0,sixes:0,wickets:0};
     matchRunMap[mid].runs += Number(b.runs||0);
     matchRunMap[mid].balls++;
-    if (b.runs===4) matchRunMap[mid].fours++;
-    if (b.runs===6) matchRunMap[mid].sixes++;
+    if (Number(b.runs)===4) matchRunMap[mid].fours++;
+    if (Number(b.runs)===6) matchRunMap[mid].sixes++;
     if (b.is_wicket) matchRunMap[mid].wickets++;
   }
   const batRows = Object.entries(matchRunMap).map(([mid,s])=>{
@@ -319,8 +338,7 @@ window.openPlayerDrawer = (name) => {
 
   document.getElementById('stab-batting').innerHTML = statPills + batRows;
 
-  // bowling pane — per-match
-  const playerOvers = allOvers.filter(o=>o.bowler_name===name);
+  // bowling pane — per-match (use playerOvers already fetched above)
   const bowlMatchMap = {};
   for (const ov of playerOvers) {
     const mid = ov.match_id;
@@ -328,8 +346,8 @@ window.openPlayerDrawer = (name) => {
     bowlMatchMap[mid].overs++;
     bowlMatchMap[mid].runs += Number(ov.runs_scored||0);
     bowlMatchMap[mid].wickets += Number(ov.wickets||0);
-    // count extras from balls
-    const ovBalls = allBalls.filter(b=>b.over_id===ov.id);
+    // count extras from balls (use fetched playerBalls — bowler's balls from their overs)
+    const ovBalls = playerBalls.filter(b=>b.over_id===ov.id);
     for (const b of ovBalls) {
       if (b.extra_type==='wide') bowlMatchMap[mid].wides++;
       if (b.extra_type==='no_ball') bowlMatchMap[mid].nb++;
@@ -366,9 +384,7 @@ window.openPlayerDrawer = (name) => {
   document.getElementById('stab-batting').classList.remove('hidden');
   document.getElementById('stab-bowling').classList.add('hidden');
 
-  document.getElementById('statsDrawer').classList.add('open');
-  document.body.style.overflow='hidden';
-};
+};  // end openPlayerDrawer
 
 window.closeStatsDrawer = () => {
   document.getElementById('statsDrawer').classList.remove('open');
