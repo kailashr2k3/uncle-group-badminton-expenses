@@ -34,28 +34,34 @@
     <a href="cricket-stats.html"    class="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white font-medium">📊 Cricket Stats</a>
   </nav>
 
-  <div class="mb-6 flex items-center justify-between">
+  <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
     <h1 class="text-xl font-bold">Player Stats</h1>
-    <div class="flex gap-1">
-      <button class="ctab active" data-tab="batting" onclick="switchTab(this)">Batting</button>
-      <button class="ctab"        data-tab="bowling" onclick="switchTab(this)">Bowling</button>
-      <button class="ctab"        data-tab="matches" onclick="switchTab(this)">Matches</button>
+    <div class="flex gap-1 flex-wrap">
+      <button class="ctab active" data-tab="cricket-batting"  onclick="switchTab(this)">🏏 Batting</button>
+      <button class="ctab"        data-tab="cricket-bowling"  onclick="switchTab(this)">🏏 Bowling</button>
+      <button class="ctab"        data-tab="cricket-matches"  onclick="switchTab(this)">🏏 Matches</button>
+      <button class="ctab"        data-tab="badminton-stats"  onclick="switchTab(this)">🏸 Badminton</button>
     </div>
   </div>
 
-  <!-- Batting tab -->
-  <div id="tab-batting">
+  <!-- Cricket Batting -->
+  <div id="tab-cricket-batting">
     <div id="battingTable"><p class="text-sm text-gray-400">Loading…</p></div>
   </div>
 
-  <!-- Bowling tab -->
-  <div id="tab-bowling" class="hidden">
+  <!-- Cricket Bowling -->
+  <div id="tab-cricket-bowling" class="hidden">
     <div id="bowlingTable"><p class="text-sm text-gray-400">Loading…</p></div>
   </div>
 
-  <!-- Matches tab -->
-  <div id="tab-matches" class="hidden">
+  <!-- Cricket Matches -->
+  <div id="tab-cricket-matches" class="hidden">
     <div id="matchesTable"><p class="text-sm text-gray-400">Loading…</p></div>
+  </div>
+
+  <!-- Badminton Stats -->
+  <div id="tab-badminton-stats" class="hidden">
+    <div id="badmintonStats"><p class="text-sm text-gray-400">Loading…</p></div>
   </div>
 
 </div>
@@ -94,19 +100,37 @@ let sortKey = 'total_runs', sortDir = 'desc';
 let allOvers = [], allBalls = [];
 
 // ── Load data ──
+// badminton state
+let badMatches = [], badRallies = [], badSquads = [];
+const badPlayerReg = {};
+
 async function loadAll() {
-  const [b, w, m] = await Promise.all([
+  const [b, w, m, bm, br, bsq] = await Promise.all([
     sb.from('cricket_batting_stats').select('*'),
     sb.from('cricket_bowling_stats').select('*'),
     sb.from('cricket_match_summary').select('*').order('date', { ascending:false }),
+    sb.from('badminton_matches').select('*').eq('status','complete').order('date',{ascending:false}),
+    sb.from('badminton_rallies').select('*'),
+    sb.from('badminton_squads').select('team,player_id,guest_name,match_id'),
   ]);
-  batting = b.data || [];
-  bowling = w.data || [];
-  matches = m.data || [];
-  // allOvers and allBalls are loaded lazily per-player in the drawer
+  batting    = b.data  || [];
+  bowling    = w.data  || [];
+  matches    = m.data  || [];
+  badMatches = bm.data || [];
+  badRallies = br.data || [];
+  badSquads  = bsq.data|| [];
+
+  // Resolve player names for badminton
+  const uuids = [...new Set(badSquads.filter(s=>s.player_id).map(s=>s.player_id))];
+  if (uuids.length) {
+    const { data:pRows } = await sb.from('players').select('id,name').in('id', uuids);
+    (pRows||[]).forEach(p => { badPlayerReg[p.id] = p.name; });
+  }
+
   renderBatting();
   renderBowling();
   renderMatches();
+  renderBadmintonStats();
 }
 
 // Per-player drill-down: fetch from views filtered by player_id
@@ -136,7 +160,7 @@ async function loadPlayerStats(playerName) {
 // ── Tab switching ──
 window.switchTab = (btn) => {
   document.querySelectorAll('.ctab').forEach(b => b.classList.toggle('active', b===btn));
-  ['batting','bowling','matches'].forEach(t => {
+  ['cricket-batting','cricket-bowling','cricket-matches','badminton-stats'].forEach(t => {
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==btn.dataset.tab);
   });
 };
@@ -421,6 +445,10 @@ window.sortBy = (key) => {
 window.openPlayerDrawer = async (idx) => {
   const name = playerRegistry[idx];
   if (!name) return;
+  // Reset drawer tab labels back to cricket labels
+  const tabs = document.querySelectorAll('.stab-btn');
+  if (tabs[0]) tabs[0].textContent = 'Batting';
+  if (tabs[1]) tabs[1].textContent = 'Bowling';
   document.getElementById('sdAv').textContent = ini(name);
   document.getElementById('sdName').textContent = name;
   const batRow = batting.find(r=>r.player_name===name)||{};
@@ -542,6 +570,263 @@ window.switchStab = (btn) => {
 };
 
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeStatsDrawer(); });
+
+// ── Badminton stats ───────────────────────────────────────
+function renderBadmintonStats() {
+  const mount = document.getElementById('badmintonStats');
+  if (!mount) return;
+
+  if (!badMatches.length) {
+    mount.innerHTML = '<p class="text-sm text-gray-400">No completed badminton matches yet.</p>';
+    return;
+  }
+
+  // Build per-player stats from rallies + squads
+  // playerKey → { name, matches:Set, pointsScored, errors:{reason:count}, played:Set }
+  const stats = {};
+
+  // Helper to get/init player entry
+  const getP = (key, name) => {
+    if (!stats[key]) stats[key] = { name, matches: new Set(), pointsScored: 0, errors: {} };
+    return stats[key];
+  };
+
+  // Map match_id → squad lookup
+  const matchSquad = {};
+  for (const s of badSquads) {
+    if (!matchSquad[s.match_id]) matchSquad[s.match_id] = [];
+    const name = s.player_id ? (badPlayerReg[s.player_id] || 'Unknown') : (s.guest_name || 'Guest');
+    matchSquad[s.match_id].push({ team: s.team, key: s.player_id||name, name });
+  }
+
+  // Map match_id → team assignments
+  const matchTeams = {};
+  for (const m of badMatches) {
+    matchTeams[m.id] = { team1: m.team1_name, team2: m.team2_name };
+  }
+
+  for (const r of badRallies) {
+    const squad = matchSquad[r.match_id] || [];
+    // Points scored — all players on scoring team get credit
+    const scorers = squad.filter(p => p.team === r.scoring_team);
+    for (const p of scorers) {
+      const entry = getP(p.key, p.name);
+      entry.pointsScored++;
+      entry.matches.add(r.match_id);
+    }
+    // Errors — player who made the error
+    if (r.loss_reason) {
+      let errorKey = null, errorName = null;
+      if (r.loss_player_id) {
+        errorKey  = r.loss_player_id;
+        errorName = badPlayerReg[r.loss_player_id] || 'Unknown';
+      } else if (r.loss_guest_name) {
+        errorKey  = r.loss_guest_name;
+        errorName = r.loss_guest_name;
+      }
+      if (errorKey) {
+        const entry = getP(errorKey, errorName);
+        entry.matches.add(r.match_id);
+        entry.errors[r.loss_reason] = (entry.errors[r.loss_reason] || 0) + 1;
+      }
+    }
+  }
+
+  const rows = Object.values(stats)
+    .sort((a,b) => b.pointsScored - a.pointsScored);
+
+  if (!rows.length) {
+    mount.innerHTML = '<p class="text-sm text-gray-400">No rally data recorded yet.</p>';
+    return;
+  }
+
+  const ERROR_LABELS = {
+    service_error:'Service err', net:'Net', out:'Out', smash_out:'Smash out',
+    net_cord:'Net cord', unforced_error:'Unforced', forced_error:'Forced',
+    let:'Let', other:'Other'
+  };
+
+  // Summary table
+  const tableRows = rows.map((r,i) => {
+    const pidx = badRegisterPlayer(r.name);
+    const totalErrors = Object.values(r.errors).reduce((s,v)=>s+v,0);
+    return `<tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openBadPlayerDrawer(${pidx})">
+      <td class="px-3 py-2.5">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-semibold">${ini(r.name)}</div>
+          <span class="font-medium text-sm">${r.name}</span>
+        </div>
+      </td>
+      <td class="px-3 py-2.5 text-right text-gray-500">${r.matches.size}</td>
+      <td class="px-3 py-2.5 text-right font-bold text-blue-700">${r.pointsScored}</td>
+      <td class="px-3 py-2.5 text-right text-red-500">${totalErrors||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Recent matches
+  const matchRows = badMatches.slice(0,5).map(m => `
+    <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+      <div>
+        <span class="text-sm font-medium">${m.team1_name} vs ${m.team2_name}</span>
+        <span class="text-xs text-gray-400 ml-2">${m.date}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-lg font-bold text-blue-700">${m.team1_score}</span>
+        <span class="text-gray-300">–</span>
+        <span class="text-lg font-bold text-emerald-700">${m.team2_score}</span>
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium ml-1">🏆 ${m.winner_team}</span>
+      </div>
+    </div>`).join('');
+
+  mount.innerHTML = `
+    <div class="flex flex-col gap-4">
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="px-4 pt-4 pb-2">
+          <div class="text-sm font-semibold text-gray-700 mb-0.5">Player Points</div>
+          <div class="text-xs text-gray-400">Tap a player to see their error breakdown</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead><tr class="bg-gray-50 text-xs text-gray-500 font-medium">
+              <th class="text-left px-3 py-2">Player</th>
+              <th class="text-right px-3 py-2">Matches</th>
+              <th class="text-right px-3 py-2">Points</th>
+              <th class="text-right px-3 py-2">Errors</th>
+            </tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+      </div>
+      ${badMatches.length ? `<div class="bg-white rounded-2xl shadow p-4">
+        <div class="text-sm font-semibold text-gray-700 mb-3">Recent Matches</div>
+        ${matchRows}
+      </div>` : ''}
+    </div>`;
+}
+
+// ── Badminton player registry ─────────────────────────────
+const badPlayerRegistry = {};
+let badPlayerRegIdx = 0;
+function badRegisterPlayer(name) {
+  const idx = badPlayerRegIdx++;
+  badPlayerRegistry[idx] = name;
+  return idx;
+}
+
+// ── Badminton player drawer ───────────────────────────────
+window.openBadPlayerDrawer = (idx) => {
+  const name = badPlayerRegistry[idx];
+  if (!name) return;
+
+  // Find this player's key across squads
+  const playerUuid = Object.entries(badPlayerReg).find(([id,n])=>n===name)?.[0];
+  const key = playerUuid || name;
+
+  // Build stats for this player
+  const matchSet = new Set();
+  let pointsScored = 0;
+  const errors = {};
+  const matchPoints = {}; // matchId → points
+
+  // Which team was this player on per match?
+  const playerTeams = {};
+  for (const s of badSquads) {
+    const sKey = s.player_id || s.guest_name;
+    if (sKey === key || (s.player_id && badPlayerReg[s.player_id] === name)) {
+      playerTeams[s.match_id] = s.team;
+    }
+  }
+
+  for (const r of badRallies) {
+    const pTeam = playerTeams[r.match_id];
+    if (pTeam === undefined) continue;
+    matchSet.add(r.match_id);
+
+    if (pTeam === r.scoring_team) {
+      pointsScored++;
+      matchPoints[r.match_id] = (matchPoints[r.match_id] || 0) + 1;
+    }
+    if (r.loss_reason) {
+      const errKey = r.loss_player_id || r.loss_guest_name;
+      if (errKey === key || (r.loss_player_id && badPlayerReg[r.loss_player_id] === name)) {
+        errors[r.loss_reason] = (errors[r.loss_reason] || 0) + 1;
+      }
+    }
+  }
+
+  const totalErrors = Object.values(errors).reduce((s,v)=>s+v,0);
+  const ERROR_LABELS = {
+    service_error:'Service error', net:'Net', out:'Out', smash_out:'Smash out',
+    net_cord:'Net cord', unforced_error:'Unforced error', forced_error:'Forced error',
+    let:'Let', other:'Other'
+  };
+
+  // Per-match breakdown
+  const matchBreakdown = [...matchSet].map(mid => {
+    const m = badMatches.find(x=>x.id===mid);
+    if (!m) return '';
+    const pts = matchPoints[mid] || 0;
+    const pTeam = playerTeams[mid];
+    const teamName = pTeam===1 ? m.team1_name : m.team2_name;
+    const won = m.winner_team === teamName;
+    return `<div class="flex justify-between items-baseline py-1.5 border-b border-gray-100 last:border-0">
+      <div>
+        <span class="text-xs font-medium">${m.team1_name} vs ${m.team2_name}</span>
+        <span class="text-xs text-gray-400 ml-1">${m.date}</span>
+        ${won ? '<span class="text-xs text-green-600 ml-1 font-medium">W</span>' : '<span class="text-xs text-red-400 ml-1">L</span>'}
+      </div>
+      <span class="font-bold text-blue-700">${pts} pts</span>
+    </div>`;
+  }).join('');
+
+  const errorRows = Object.entries(errors).sort((a,b)=>b[1]-a[1]).map(([r,c]) =>
+    `<div class="flex justify-between text-xs py-1.5 border-b border-gray-100 last:border-0">
+      <span class="text-gray-600">${ERROR_LABELS[r]||r}</span>
+      <span class="font-semibold text-red-500">${c}</span>
+    </div>`).join('');
+
+  // Populate drawer
+  document.getElementById('sdAv').textContent = ini(name);
+  document.getElementById('sdAv').className = 'w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold flex-shrink-0';
+  document.getElementById('sdName').textContent = name;
+  document.getElementById('sdMeta').textContent = `${matchSet.size} matches · ${pointsScored} points · ${totalErrors} errors`;
+
+  // Use batting/bowling tabs for points/errors
+  document.getElementById('stab-batting').innerHTML = `
+    <div class="mb-4 grid grid-cols-3 gap-2">
+      <div class="bg-blue-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-blue-700">${pointsScored}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Points</div>
+      </div>
+      <div class="bg-red-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-red-500">${totalErrors}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Errors</div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-gray-700">${matchSet.size}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Matches</div>
+      </div>
+    </div>
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Per match</div>
+    ${matchBreakdown || '<p class="text-xs text-gray-400">No data</p>'}`;
+
+  document.getElementById('stab-bowling').innerHTML = `
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Error breakdown</div>
+    ${errorRows || '<p class="text-xs text-gray-400">No errors recorded</p>'}`;
+
+  // Reset tabs to batting (points) tab
+  document.querySelectorAll('.stab-btn').forEach(b => b.classList.toggle('active', b.dataset.stab==='batting'));
+  document.getElementById('stab-batting').classList.remove('hidden');
+  document.getElementById('stab-bowling').classList.add('hidden');
+
+  // Update tab labels
+  const tabs = document.querySelectorAll('.stab-btn');
+  if (tabs[0]) tabs[0].textContent = 'Points';
+  if (tabs[1]) tabs[1].textContent = 'Errors';
+
+  document.getElementById('statsDrawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+};
 
 loadAll();
 </script>
