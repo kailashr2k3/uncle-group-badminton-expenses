@@ -26,9 +26,9 @@
   <nav class="flex items-center gap-1 mb-6 bg-white rounded-2xl shadow px-4 py-3 flex-wrap">
     <span class="font-bold text-sm text-gray-800 mr-3">Uncle Group</span>
     <a href="index.html"    class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">💰 Expenses</a>
-    <a href="cricket.html"  class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">🏏 Scoring</a>
-    <a href="badminton.html"class="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white font-medium">🏸 Badminton</a>
-    <a href="stats.html"    class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">📊 Stats</a>
+    <a href="cricket-scoring-app.html"  class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">🏏 Scoring</a>
+    <a href="badminton-scoring-app.html"class="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white font-medium">🏸 Badminton</a>
+    <a href="cricket-stats.html"    class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">📊 Stats</a>
     <div class="ml-auto"><button id="adminToggle" class="text-sm px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200">Admin</button></div>
   </nav>
 
@@ -51,36 +51,22 @@
   </section>
 </div>
 
-<!-- Loss reason modal -->
-<div id="reasonModal" class="modal-bg hidden">
-  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
-    <div class="font-bold mb-1" id="reasonTitle">Why did they lose the point?</div>
-    <div class="text-xs text-gray-400 mb-3">(Optional — tap to record or skip)</div>
-    <div class="grid grid-cols-2 gap-2 mb-3" id="reasonGrid"></div>
-    <div class="mb-3">
-      <label class="text-xs text-gray-500 block mb-1">Player (optional)</label>
-      <select id="reasonPlayer" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"></select>
-    </div>
+<!-- Reason bottom sheet — shown inline inside the scoring screen -->
+<div id="reasonSheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-lg mx-auto">
+  <div class="bg-white rounded-t-2xl shadow-2xl p-4 border-t border-gray-200">
+    <div class="text-sm font-semibold mb-0.5" id="reasonTitle">Why did they lose?</div>
+    <div class="text-xs text-gray-400 mb-3">Tap a reason and/or a player — or skip</div>
+    <!-- Reason chips -->
+    <div class="flex flex-wrap gap-2 mb-3" id="reasonChips"></div>
+    <!-- Player tiles -->
+    <div class="flex flex-wrap gap-2 mb-4" id="reasonPlayerTiles"></div>
     <div class="flex gap-2">
-      <button id="reasonSkip"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2 text-sm">Skip</button>
-      <button id="reasonConfirm" class="flex-1 bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold">Save</button>
+      <button id="reasonSkip"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2.5 text-sm font-medium">Skip</button>
+      <button id="reasonConfirm" class="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-semibold">Save</button>
     </div>
   </div>
 </div>
-
-<!-- Highlight modal -->
-<div id="highlightModal" class="modal-bg hidden">
-  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
-    <div class="font-bold mb-1">🌟 Mark as highlight?</div>
-    <div class="text-xs text-gray-400 mb-3">Add a note about this rally</div>
-    <textarea id="highlightNote" rows="3" placeholder="e.g. incredible cross-court smash…"
-      class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"></textarea>
-    <div class="flex gap-2">
-      <button id="highlightSkip"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2 text-sm">Skip</button>
-      <button id="highlightConfirm" class="flex-1 bg-yellow-400 text-yellow-900 rounded-xl py-2 text-sm font-semibold">Save highlight</button>
-    </div>
-  </div>
-</div>
+<div id="reasonBackdrop" class="hidden fixed inset-0 bg-black bg-opacity-30 z-40"></div>
 
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -154,6 +140,15 @@ function render() {
   wireStep();
 }
 
+// ── Auto-generate team name from player names ────────────
+function makeTeamName(squad) {
+  if (!squad.length) return 'TBD';
+  return squad
+    .slice(0,2)
+    .map(p => p.name.trim().slice(0,3).toUpperCase())
+    .join('-');
+}
+
 // ── STEP 1: Setup ────────────────────────────────────────
 function renderSetup() {
   return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
@@ -164,16 +159,8 @@ function renderSetup() {
     </div>
     <div>
       <label class="text-xs font-medium text-gray-500 block mb-1">Date</label>
-      <input type="date" id="gDate" value="${new Date().toISOString().slice(0,10)}"
+      <input type="date" id="gDate" value="${G.date || new Date().toISOString().slice(0,10)}"
         class="w-full border rounded-lg px-3 py-2 text-sm"/>
-    </div>
-    <div>
-      <label class="text-xs font-medium text-gray-500 block mb-1">Team 1 name</label>
-      <input id="gT1" value="${G.team1||'Team Smash'}" class="w-full border rounded-lg px-3 py-2 text-sm"/>
-    </div>
-    <div>
-      <label class="text-xs font-medium text-gray-500 block mb-1">Team 2 name</label>
-      <input id="gT2" value="${G.team2||'Team Drop'}" class="w-full border rounded-lg px-3 py-2 text-sm"/>
     </div>
     <div class="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
       <div class="font-semibold text-gray-700">Rules</div>
@@ -183,7 +170,7 @@ function renderSetup() {
       <div>• Winner of rally serves next</div>
     </div>
     <button id="setupNext" class="w-full bg-blue-600 text-white rounded-xl py-3 font-semibold hover:bg-blue-700">
-      Next — Build Teams →
+      Next — Pick Players →
     </button>
   </div>`;
 }
@@ -218,9 +205,11 @@ function renderSquads() {
   ).join('') || '<span class="text-xs text-gray-400">Empty</span>';
 
   const canNext = G.squad1.length >= 2 && G.squad2.length >= 2;
+  const t1name = makeTeamName(G.squad1);
+  const t2name = makeTeamName(G.squad2);
   return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
     <div class="bg-gray-800 rounded-xl p-3 text-white">
-      <div class="font-bold">${G.team1} vs ${G.team2}</div>
+      <div class="font-bold">${t1name} vs ${t2name}</div>
       <div class="text-xs text-gray-400 mt-0.5">Tap once → Team 1 (🔵) · Tap again → Team 2 (🟢) · Tap again → remove</div>
     </div>
     <div class="grid grid-cols-3 gap-2">
@@ -239,11 +228,11 @@ function renderSquads() {
     <!-- Team summary -->
     <div class="grid grid-cols-2 gap-2">
       <div class="bg-blue-50 border border-blue-200 rounded-xl p-2.5">
-        <div class="text-xs font-bold text-blue-700 mb-1">${G.team1} (${G.squad1.length})</div>
+        <div class="text-xs font-bold text-blue-700 mb-1">${t1name} (${G.squad1.length})</div>
         <div class="flex flex-wrap gap-1">${pillRow(G.squad1,'bg-blue-100 text-blue-700')}</div>
       </div>
       <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
-        <div class="text-xs font-bold text-emerald-700 mb-1">${G.team2} (${G.squad2.length})</div>
+        <div class="text-xs font-bold text-emerald-700 mb-1">${t2name} (${G.squad2.length})</div>
         <div class="flex flex-wrap gap-1">${pillRow(G.squad2,'bg-emerald-100 text-emerald-700')}</div>
       </div>
     </div>
@@ -405,7 +394,7 @@ function renderResult() {
     <button onclick="window.badNewGame()" class="w-full bg-blue-600 text-white rounded-xl py-3 font-semibold hover:bg-blue-700">
       New Game
     </button>
-    <a href="stats.html" class="text-xs text-blue-600 text-center block hover:underline">View all stats →</a>
+    <a href="cricket-stats.html" class="text-xs text-blue-600 text-center block hover:underline">View all stats →</a>
   </div>`;
 }
 
@@ -413,14 +402,15 @@ function renderResult() {
 function wireStep() {
   if (currentStep === 'setup') {
     document.getElementById('setupNext').onclick = () => {
-      G.team1 = document.getElementById('gT1').value.trim() || 'Team 1';
-      G.team2 = document.getElementById('gT2').value.trim() || 'Team 2';
-      G.date  = document.getElementById('gDate').value;
+      G.date = document.getElementById('gDate').value;
       setStep('squads');
     };
   }
   if (currentStep === 'squads') {
     document.getElementById('squadsNext')?.addEventListener('click', async () => {
+      // Auto-generate team names from player initials
+      G.team1 = makeTeamName(G.squad1);
+      G.team2 = makeTeamName(G.squad2);
       // Save match + squads to DB
       const { data:m } = await sb.from('badminton_matches').insert({
         date: G.date, team1_name: G.team1, team2_name: G.team2, status: 'setup'
@@ -497,81 +487,101 @@ window.badPoint = (scoringTeam) => {
     isHighlight: false,
     highlightNote: null,
   };
+  // reason sheet replaces two-popup flow
   // Show loss reason modal for the team that LOST
-  showReasonModal(scoringTeam === 1 ? G.team2 : G.team1,
+  showReasonSheet(scoringTeam === 1 ? G.team2 : G.team1,
                   scoringTeam === 1 ? G.squad2 : G.squad1);
 };
 
-function showReasonModal(losingTeam, losingSquad) {
+function showReasonSheet(losingTeam, losingSquad) {
   const REASONS = [
-    { value:'service_error', label:'Service error' },
-    { value:'net',           label:'Net' },
-    { value:'out',           label:'Out' },
-    { value:'smash_out',     label:'Smash out' },
-    { value:'net_cord',      label:'Net cord' },
-    { value:'unforced_error',label:'Unforced error' },
-    { value:'forced_error',  label:'Forced error' },
-    { value:'let',           label:'Let' },
-    { value:'other',         label:'Other' },
+    { value:'service_error', label:'Service error', emoji:'🏸' },
+    { value:'net',           label:'Net',           emoji:'🔴' },
+    { value:'out',           label:'Out',           emoji:'📤' },
+    { value:'smash_out',     label:'Smash out',     emoji:'💥' },
+    { value:'net_cord',      label:'Net cord',      emoji:'🎯' },
+    { value:'unforced_error',label:'Unforced',      emoji:'😬' },
+    { value:'forced_error',  label:'Forced',        emoji:'🤺' },
+    { value:'let',           label:'Let',           emoji:'🔄' },
+    { value:'other',         label:'Other',         emoji:'❓' },
   ];
-  let selected = null;
-  const grid = document.getElementById('reasonGrid');
-  grid.innerHTML = REASONS.map(r =>
-    `<button data-val="${r.value}"
-      class="reason-btn border rounded-xl py-2 px-1 text-xs font-medium hover:bg-blue-50 hover:border-blue-300 transition-colors">
-      ${r.label}
+
+  let selReason = null;
+  let selPlayer = null;
+
+  // Reason chips
+  const chipsEl = document.getElementById('reasonChips');
+  chipsEl.innerHTML = REASONS.map((r,i) =>
+    `<button id="rc-${i}" data-val="${r.value}"
+      class="rc-btn border rounded-full px-3 py-1.5 text-xs font-medium transition-all hover:bg-blue-50 hover:border-blue-300 bg-white text-gray-600 border-gray-200">
+      ${r.emoji} ${r.label}
     </button>`
   ).join('');
-  grid.querySelectorAll('.reason-btn').forEach(btn => {
+  chipsEl.querySelectorAll('.rc-btn').forEach(btn => {
     btn.onclick = () => {
-      grid.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('bg-blue-100','border-blue-400','text-blue-700'));
-      btn.classList.add('bg-blue-100','border-blue-400','text-blue-700');
-      selected = btn.dataset.val;
+      chipsEl.querySelectorAll('.rc-btn').forEach(b => {
+        b.className = 'rc-btn border rounded-full px-3 py-1.5 text-xs font-medium transition-all hover:bg-blue-50 hover:border-blue-300 bg-white text-gray-600 border-gray-200';
+      });
+      if (selReason === btn.dataset.val) {
+        selReason = null; // toggle off
+      } else {
+        btn.className = 'rc-btn border rounded-full px-3 py-1.5 text-xs font-medium bg-blue-600 text-white border-blue-600';
+        selReason = btn.dataset.val;
+      }
     };
   });
 
-  // Player dropdown
-  const sel = document.getElementById('reasonPlayer');
-  sel.innerHTML = '<option value="">— any player —</option>' +
-    losingSquad.map(p => `<option value="${p.id||p.name}">${p.name}</option>`).join('');
+  // Player tiles
+  const tilesEl = document.getElementById('reasonPlayerTiles');
+  if (losingSquad.length) {
+    tilesEl.innerHTML = '<span class="text-xs text-gray-400 w-full">Who made the error?</span>' +
+      losingSquad.map((p,i) =>
+        `<button id="rp-${i}" data-idx="${i}"
+          class="rp-btn border-2 rounded-xl px-3 py-2 text-xs font-medium transition-all bg-white text-gray-600 border-gray-200 hover:border-blue-300">
+          ${p.name}
+        </button>`
+      ).join('');
+    tilesEl.querySelectorAll('.rp-btn').forEach(btn => {
+      btn.onclick = () => {
+        const p = losingSquad[Number(btn.dataset.idx)];
+        if (selPlayer?.name === p.name) {
+          selPlayer = null;
+          btn.className = 'rp-btn border-2 rounded-xl px-3 py-2 text-xs font-medium bg-white text-gray-600 border-gray-200 hover:border-blue-300';
+        } else {
+          tilesEl.querySelectorAll('.rp-btn').forEach(b => {
+            b.className = 'rp-btn border-2 rounded-xl px-3 py-2 text-xs font-medium bg-white text-gray-600 border-gray-200 hover:border-blue-300';
+          });
+          btn.className = 'rp-btn border-2 rounded-xl px-3 py-2 text-xs font-medium bg-blue-600 text-white border-blue-600';
+          selPlayer = p;
+        }
+      };
+    });
+  } else {
+    tilesEl.innerHTML = '';
+  }
 
-  document.getElementById('reasonTitle').textContent = `Why did ${losingTeam} lose the point? (optional)`;
-  document.getElementById('reasonModal').classList.remove('hidden');
+  document.getElementById('reasonTitle').textContent = `Why did ${losingTeam} lose the point?`;
+  document.getElementById('reasonSheet').classList.remove('hidden');
+  document.getElementById('reasonBackdrop').classList.remove('hidden');
+
+  const close = () => {
+    document.getElementById('reasonSheet').classList.add('hidden');
+    document.getElementById('reasonBackdrop').classList.add('hidden');
+  };
 
   const finish = () => {
+    close();
     if (pendingRally) {
-      pendingRally.lossReason = selected;
-      const selVal = sel.value;
-      const player = losingSquad.find(p=>(p.id||p.name)===selVal);
-      if (player) {
-        pendingRally.lossPlayerId   = player.id || null;
-        pendingRally.lossGuestName  = player.id ? null : player.name;
-      }
+      pendingRally.lossReason    = selReason;
+      pendingRally.lossPlayerId  = selPlayer?.id   || null;
+      pendingRally.lossGuestName = selPlayer?.id ? null : (selPlayer?.name || null);
     }
-    document.getElementById('reasonModal').classList.add('hidden');
-    showHighlightModal();
-  };
-
-  document.getElementById('reasonSkip').onclick    = finish;
-  document.getElementById('reasonConfirm').onclick = finish;
-}
-
-function showHighlightModal() {
-  document.getElementById('highlightNote').value = '';
-  document.getElementById('highlightModal').classList.remove('hidden');
-
-  document.getElementById('highlightSkip').onclick = () => {
-    document.getElementById('highlightModal').classList.add('hidden');
     commitRally();
   };
-  document.getElementById('highlightConfirm').onclick = () => {
-    if (pendingRally) {
-      pendingRally.isHighlight    = true;
-      pendingRally.highlightNote  = document.getElementById('highlightNote').value.trim() || null;
-    }
-    document.getElementById('highlightModal').classList.add('hidden');
-    commitRally();
-  };
+
+  document.getElementById('reasonBackdrop').onclick = finish; // tap outside = skip
+  document.getElementById('reasonSkip').onclick     = finish;
+  document.getElementById('reasonConfirm').onclick  = finish;
 }
 
 async function commitRally() {
