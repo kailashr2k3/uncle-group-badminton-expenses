@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Uncle Group — Badminton</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    .step-dot { width:8px; height:8px; border-radius:50%; transition:all .3s; background:#e5e7eb; }
+    .step-dot.done   { background:#16a34a; }
+    .step-dot.active { background:#1d4ed8; width:24px; border-radius:4px; }
+    .modal-bg { position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem; }
+    /* shuttle icon animation on point */
+    @keyframes shuttle { 0%{transform:translateX(0) scale(1)} 50%{transform:translateX(10px) scale(1.2)} 100%{transform:translateX(0) scale(1)} }
+    .shuttle-anim { animation: shuttle .3s ease; }
+    /* serve indicator */
+    .serve-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+      background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:20px;padding:2px 8px; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+<div class="max-w-lg mx-auto p-4">
+
+  <!-- Nav -->
+  <nav class="flex items-center gap-1 mb-6 bg-white rounded-2xl shadow px-4 py-3 flex-wrap">
+    <span class="font-bold text-sm text-gray-800 mr-3">Uncle Group</span>
+    <a href="index.html"    class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">💰 Expenses</a>
+    <a href="cricket.html"  class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">🏏 Scoring</a>
+    <a href="badminton.html"class="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white font-medium">🏸 Badminton</a>
+    <a href="stats.html"    class="text-xs px-3 py-1.5 rounded-full text-gray-500 hover:bg-gray-100">📊 Stats</a>
+    <div class="ml-auto"><button id="adminToggle" class="text-sm px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200">Admin</button></div>
+  </nav>
+
+  <!-- Admin mount point -->
+  <div id="adminMount" class="mb-6"></div>
+
+  <!-- Public: recent matches -->
+  <section id="publicSection">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold">Badminton Matches</h2>
+      <div class="flex items-center gap-2">
+        <button id="mpPrev" class="text-xs px-2.5 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40">← Prev</button>
+        <span id="mpInfo" class="text-xs text-gray-500 min-w-12 text-center">1/1</span>
+        <button id="mpNext" class="text-xs px-2.5 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-40">Next →</button>
+      </div>
+    </div>
+    <div id="matchList" class="flex flex-col gap-3">
+      <p class="text-sm text-gray-400">Loading…</p>
+    </div>
+  </section>
+</div>
+
+<!-- Loss reason modal -->
+<div id="reasonModal" class="modal-bg hidden">
+  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+    <div class="font-bold mb-1" id="reasonTitle">Why did they lose the point?</div>
+    <div class="text-xs text-gray-400 mb-3">(Optional — tap to record or skip)</div>
+    <div class="grid grid-cols-2 gap-2 mb-3" id="reasonGrid"></div>
+    <div class="mb-3">
+      <label class="text-xs text-gray-500 block mb-1">Player (optional)</label>
+      <select id="reasonPlayer" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"></select>
+    </div>
+    <div class="flex gap-2">
+      <button id="reasonSkip"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2 text-sm">Skip</button>
+      <button id="reasonConfirm" class="flex-1 bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Highlight modal -->
+<div id="highlightModal" class="modal-bg hidden">
+  <div class="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+    <div class="font-bold mb-1">🌟 Mark as highlight?</div>
+    <div class="text-xs text-gray-400 mb-3">Add a note about this rally</div>
+    <textarea id="highlightNote" rows="3" placeholder="e.g. incredible cross-court smash…"
+      class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"></textarea>
+    <div class="flex gap-2">
+      <button id="highlightSkip"    class="flex-1 bg-gray-100 text-gray-600 rounded-xl py-2 text-sm">Skip</button>
+      <button id="highlightConfirm" class="flex-1 bg-yellow-400 text-yellow-900 rounded-xl py-2 text-sm font-semibold">Save highlight</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+
+const SUPABASE_URL      = "https://ioxtxbgqaognzxscgkly.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveHR4YmdxYW9nbnp4c2Nna2x5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxNTgxMDksImV4cCI6MjA3NTczNDEwOX0.oIST2TVUJbg4H0PziuNdLBcSHFERkkM2M29bHpsYE-E";
+const SITE_URL          = "https://kailashr2k3.github.io/uncle-group-badminton-expenses/badminton.html";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
+});
+
+// ── Auth ─────────────────────────────────────────────────
+async function getUser() {
+  const { data:{ user } } = await sb.auth.getUser();
+  return user;
+}
+
+// ── Game state ───────────────────────────────────────────
+const G = {
+  matchId: null, date: null,
+  team1: '', team2: '',
+  squad1: [], squad2: [],        // [{id,name}]
+  score1: 0, score2: 0,
+  servingTeam: 1,                // 1 or 2
+  seq: 0,
+  rallies: [],                   // local log
+  // pending rally (waiting for reason/highlight)
+  pending: null,
+  registeredPlayers: null,
+};
+
+// ── STEPS ────────────────────────────────────────────────
+const STEPS = ['setup','squads','serve','playing','result'];
+const LABELS = { setup:'Match Setup', squads:'Build Teams', serve:'First Serve', playing:'Live Scoring', result:'Match Over' };
+let currentStep = 'setup';
+
+function setStep(s) {
+  currentStep = s;
+  // update dots
+  STEPS.forEach((st,i) => {
+    const dot = document.getElementById('bdot'+i);
+    if (!dot) return;
+    const idx = STEPS.indexOf(s);
+    dot.className = 'step-dot ' + (i < idx ? 'done' : i === idx ? 'active' : '');
+  });
+  const lbl = document.getElementById('stepLabel');
+  if (lbl) lbl.textContent = `${LABELS[s]} (${STEPS.indexOf(s)+1}/${STEPS.length})`;
+  render();
+}
+
+// ── Score logic ──────────────────────────────────────────
+function isGameOver() {
+  const { score1: a, score2: b } = G;
+  if (a >= 30 || b >= 30) return true;          // cap at 30
+  if (a >= 21 && a - b >= 2) return true;
+  if (b >= 21 && b - a >= 2) return true;
+  return false;
+}
+
+function winner() {
+  return G.score1 > G.score2 ? G.team1 : G.team2;
+}
+
+// ── Render ───────────────────────────────────────────────
+function render() {
+  const mount = document.getElementById('wizardStep');
+  if (!mount) return;
+  const map = { setup: renderSetup, squads: renderSquads, serve: renderServe,
+                playing: renderPlaying, result: renderResult };
+  mount.innerHTML = (map[currentStep] || renderSetup)();
+  wireStep();
+}
+
+// ── STEP 1: Setup ────────────────────────────────────────
+function renderSetup() {
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-blue-700 rounded-xl p-4 text-white text-center">
+      <div class="text-3xl mb-1">🏸</div>
+      <div class="font-bold">New Badminton Game</div>
+      <div class="text-xs text-blue-200 mt-0.5">Doubles · Rally point · Game to 21</div>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-gray-500 block mb-1">Date</label>
+      <input type="date" id="gDate" value="${new Date().toISOString().slice(0,10)}"
+        class="w-full border rounded-lg px-3 py-2 text-sm"/>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-gray-500 block mb-1">Team 1 name</label>
+      <input id="gT1" value="${G.team1||'Team Smash'}" class="w-full border rounded-lg px-3 py-2 text-sm"/>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-gray-500 block mb-1">Team 2 name</label>
+      <input id="gT2" value="${G.team2||'Team Drop'}" class="w-full border rounded-lg px-3 py-2 text-sm"/>
+    </div>
+    <div class="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
+      <div class="font-semibold text-gray-700">Rules</div>
+      <div>• Rally point — every rally scores a point</div>
+      <div>• Game to 21, win by 2 clear points</div>
+      <div>• At 20-20: must win by 2 · At 29-29: next point wins</div>
+      <div>• Winner of rally serves next</div>
+    </div>
+    <button id="setupNext" class="w-full bg-blue-600 text-white rounded-xl py-3 font-semibold hover:bg-blue-700">
+      Next — Build Teams →
+    </button>
+  </div>`;
+}
+
+// ── STEP 2: Squads ───────────────────────────────────────
+function renderSquads() {
+  const all = G.registeredPlayers || [];
+  const sq1ids = new Set(G.squad1.map(p=>p.id||p.name));
+  const sq2ids = new Set(G.squad2.map(p=>p.id||p.name));
+
+  window.__badTileReg = {};
+  let tidx = 0;
+  const tile = (p) => {
+    const key  = p.id||p.name;
+    const inT1 = sq1ids.has(key), inT2 = sq2ids.has(key);
+    const cls  = inT1 ? 'bg-blue-600 text-white border-blue-600'
+               : inT2 ? 'bg-emerald-600 text-white border-emerald-600'
+               : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400';
+    const badge = inT1 ? `<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white text-blue-600 text-xs flex items-center justify-center font-bold border border-blue-200 leading-none">1</span>`
+                : inT2 ? `<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white text-emerald-600 text-xs flex items-center justify-center font-bold border border-emerald-200 leading-none">2</span>`
+                : '';
+    const i = tidx++;
+    window.__badTileReg[i] = { key, name: p.name, id: p.id||null };
+    return `<div onclick="window.badCycleTile(${i})"
+      class="relative cursor-pointer border-2 rounded-xl px-3 py-2 text-xs font-medium text-center transition-all select-none ${cls}">
+      ${p.name}${!p.id ? '<br><span style="opacity:.6;font-size:10px">guest</span>' : ''}${badge}
+    </div>`;
+  };
+
+  const pillRow = (squad, col) => squad.map(p =>
+    `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${col}">${p.name}</span>`
+  ).join('') || '<span class="text-xs text-gray-400">Empty</span>';
+
+  const canNext = G.squad1.length >= 2 && G.squad2.length >= 2;
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="bg-gray-800 rounded-xl p-3 text-white">
+      <div class="font-bold">${G.team1} vs ${G.team2}</div>
+      <div class="text-xs text-gray-400 mt-0.5">Tap once → Team 1 (🔵) · Tap again → Team 2 (🟢) · Tap again → remove</div>
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+      ${all.map(tile).join('')}
+    </div>
+    <div>
+      <div class="text-xs font-medium text-gray-500 mb-1">Add guest</div>
+      <div class="flex gap-2">
+        <input id="guestIn" placeholder="Guest name…" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"/>
+        <button onclick="window.badAddGuest()" class="px-3 bg-gray-600 text-white rounded-lg text-xs font-semibold">Add</button>
+      </div>
+    </div>
+    <!-- Guest tiles -->
+    ${[...G.squad1,...G.squad2].filter(p=>!p.id).filter((p,i,a)=>a.findIndex(x=>x.name===p.name)===i).length
+      ? `<div class="grid grid-cols-3 gap-2">${[...G.squad1,...G.squad2].filter(p=>!p.id).filter((p,i,a)=>a.findIndex(x=>x.name===p.name)===i).map(tile).join('')}</div>` : ''}
+    <!-- Team summary -->
+    <div class="grid grid-cols-2 gap-2">
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-2.5">
+        <div class="text-xs font-bold text-blue-700 mb-1">${G.team1} (${G.squad1.length})</div>
+        <div class="flex flex-wrap gap-1">${pillRow(G.squad1,'bg-blue-100 text-blue-700')}</div>
+      </div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+        <div class="text-xs font-bold text-emerald-700 mb-1">${G.team2} (${G.squad2.length})</div>
+        <div class="flex flex-wrap gap-1">${pillRow(G.squad2,'bg-emerald-100 text-emerald-700')}</div>
+      </div>
+    </div>
+    <button id="squadsNext" ${canNext?'':'disabled'}
+      class="w-full bg-blue-600 text-white rounded-xl py-3 font-semibold hover:bg-blue-700 disabled:opacity-40">
+      ${canNext ? 'Lock Teams →' : 'Add at least 2 players per team'}
+    </button>
+    <button onclick="window.badBack()" class="text-xs text-gray-400 text-center hover:text-gray-600">← Back</button>
+  </div>`;
+}
+
+// ── STEP 3: First serve ───────────────────────────────────
+function renderServe() {
+  return `<div class="bg-white rounded-2xl shadow p-5 flex flex-col gap-4">
+    <div class="text-base font-bold text-center">Who serves first?</div>
+    <div class="text-xs text-gray-400 text-center">Usually decided by a coin toss or shuttle spin</div>
+    <div class="grid grid-cols-2 gap-3">
+      <button onclick="window.badFirstServe(1)"
+        class="bg-blue-600 text-white rounded-2xl p-5 text-center hover:bg-blue-700 active:scale-95 transition-all">
+        <div class="text-2xl mb-1">🏸</div>
+        <div class="font-bold">${G.team1}</div>
+        <div class="text-xs opacity-80 mt-0.5">${G.squad1.map(p=>p.name).join(' & ')}</div>
+      </button>
+      <button onclick="window.badFirstServe(2)"
+        class="bg-emerald-600 text-white rounded-2xl p-5 text-center hover:bg-emerald-700 active:scale-95 transition-all">
+        <div class="text-2xl mb-1">🏸</div>
+        <div class="font-bold">${G.team2}</div>
+        <div class="text-xs opacity-80 mt-0.5">${G.squad2.map(p=>p.name).join(' & ')}</div>
+      </button>
+    </div>
+  </div>`;
+}
+
+// ── STEP 4: Live scoring ──────────────────────────────────
+function renderPlaying() {
+  const { score1, score2, servingTeam, team1, team2, squad1, squad2 } = G;
+  const t1col = '#2563eb', t2col = '#059669';
+  const over20 = score1 >= 20 || score2 >= 20;
+  const deuceMsg = score1 >= 20 && score2 >= 20
+    ? (score1 === 29 && score2 === 29 ? '⚡ 29-all — next point wins!' : `Deuce — win by 2`)
+    : '';
+
+  const serving1 = servingTeam === 1;
+  const serveBadge = (team, isServing) => isServing
+    ? `<span class="serve-badge">🏸 serving</span>` : '';
+
+  const recent = [...G.rallies].reverse().slice(0,5);
+  const recentHtml = recent.length ? recent.map(r => {
+    const scorer = r.scoringTeam === 1 ? team1 : team2;
+    const col    = r.scoringTeam === 1 ? 'text-blue-600' : 'text-emerald-600';
+    return `<div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
+      <span class="${col} font-medium">+1 ${scorer}</span>
+      <span class="text-gray-400">${r.score1}-${r.score2}${r.isHighlight?' 🌟':''}</span>
+      ${r.lossReason ? `<span class="text-gray-400 italic">${r.lossReason.replace(/_/g,' ')}</span>` : ''}
+    </div>`;
+  }).join('') : '<div class="text-xs text-gray-400 py-2 text-center">No points yet</div>';
+
+  return `<div class="flex flex-col gap-3">
+    <!-- Scoreboard -->
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="grid grid-cols-2">
+        <!-- Team 1 -->
+        <div class="p-4 text-center border-r border-gray-100">
+          <div class="text-xs font-medium text-gray-500 mb-0.5">${team1}</div>
+          <div class="text-xs text-gray-400 mb-1">${squad1.map(p=>p.name).join(' & ')}</div>
+          ${serveBadge(1, serving1)}
+          <div class="text-6xl font-bold mt-2" style="color:${t1col}">${score1}</div>
+        </div>
+        <!-- Team 2 -->
+        <div class="p-4 text-center">
+          <div class="text-xs font-medium text-gray-500 mb-0.5">${team2}</div>
+          <div class="text-xs text-gray-400 mb-1">${squad2.map(p=>p.name).join(' & ')}</div>
+          ${serveBadge(2, !serving1)}
+          <div class="text-6xl font-bold mt-2" style="color:${t2col}">${score2}</div>
+        </div>
+      </div>
+      ${deuceMsg ? `<div class="bg-amber-50 border-t border-amber-200 text-center py-2 text-xs font-semibold text-amber-700">${deuceMsg}</div>` : ''}
+    </div>
+
+    <!-- Point buttons -->
+    <div class="grid grid-cols-2 gap-3">
+      <button onclick="window.badPoint(1)"
+        class="bg-blue-600 text-white rounded-2xl py-6 text-center font-bold text-lg hover:bg-blue-700 active:scale-95 transition-all shadow">
+        + Point<br><span class="text-xs font-normal opacity-80">${team1}</span>
+      </button>
+      <button onclick="window.badPoint(2)"
+        class="bg-emerald-600 text-white rounded-2xl py-6 text-center font-bold text-lg hover:bg-emerald-700 active:scale-95 transition-all shadow">
+        + Point<br><span class="text-xs font-normal opacity-80">${team2}</span>
+      </button>
+    </div>
+
+    <!-- Undo -->
+    <button onclick="window.badUndo()"
+      class="w-full bg-white border border-gray-200 text-gray-500 rounded-xl py-2 text-sm hover:bg-gray-50 ${G.rallies.length?'':'opacity-40 cursor-not-allowed'}">
+      ↩ Undo last point
+    </button>
+
+    <!-- Recent rallies -->
+    <div class="bg-white rounded-xl shadow p-3">
+      <div class="text-xs font-medium text-gray-500 mb-2">Recent rallies</div>
+      ${recentHtml}
+    </div>
+
+    <!-- Finish -->
+    <button onclick="window.badFinish()"
+      class="w-full bg-gray-800 text-white rounded-xl py-3 font-semibold hover:bg-gray-900">
+      Finish Match
+    </button>
+  </div>`;
+}
+
+// ── STEP 5: Result ────────────────────────────────────────
+function renderResult() {
+  const { score1, score2, team1, team2, squad1, squad2, rallies } = G;
+  const w = score1 > score2 ? team1 : team2;
+  const highlights = rallies.filter(r=>r.isHighlight);
+  const t1pts = rallies.filter(r=>r.scoringTeam===1).length;
+  const t2pts = rallies.filter(r=>r.scoringTeam===2).length;
+
+  // Loss reasons breakdown
+  const reasons = {};
+  rallies.forEach(r => { if (r.lossReason) reasons[r.lossReason] = (reasons[r.lossReason]||0)+1; });
+  const reasonRows = Object.entries(reasons).sort((a,b)=>b[1]-a[1]).map(([r,c])=>
+    `<div class="flex justify-between text-xs py-1 border-b border-gray-50 last:border-0">
+      <span>${r.replace(/_/g,' ')}</span><span class="font-semibold">${c}</span>
+    </div>`).join('');
+
+  return `<div class="flex flex-col gap-4">
+    <div class="bg-blue-700 rounded-2xl p-5 text-white text-center">
+      <div class="text-3xl mb-1">🏆</div>
+      <div class="text-xl font-bold">${w} won!</div>
+      <div class="text-4xl font-bold mt-2">${score1} – ${score2}</div>
+      <div class="text-xs opacity-70 mt-1">${team1} vs ${team2} · ${rallies.length} rallies</div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="bg-white rounded-xl p-3 text-center shadow">
+        <div class="text-xs text-gray-500 mb-1">${team1}</div>
+        <div class="text-xs text-gray-400 mb-2">${squad1.map(p=>p.name).join(' & ')}</div>
+        <div class="text-2xl font-bold text-blue-600">${score1}</div>
+        <div class="text-xs text-gray-400">${t1pts} rallies won</div>
+      </div>
+      <div class="bg-white rounded-xl p-3 text-center shadow">
+        <div class="text-xs text-gray-500 mb-1">${team2}</div>
+        <div class="text-xs text-gray-400 mb-2">${squad2.map(p=>p.name).join(' & ')}</div>
+        <div class="text-2xl font-bold text-emerald-600">${score2}</div>
+        <div class="text-xs text-gray-400">${t2pts} rallies won</div>
+      </div>
+    </div>
+    ${highlights.length ? `<div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+      <div class="text-xs font-bold text-yellow-700 mb-2">🌟 Highlights (${highlights.length})</div>
+      ${highlights.map(r=>`<div class="text-xs py-1 border-b border-yellow-100 last:border-0">
+        <span class="font-medium">${r.scoringTeam===1?team1:team2}</span> won rally #${r.seq}
+        ${r.highlightNote?`— ${r.highlightNote}`:''}
+      </div>`).join('')}
+    </div>` : ''}
+    ${reasonRows ? `<div class="bg-white rounded-xl p-3 shadow">
+      <div class="text-xs font-bold text-gray-600 mb-2">Error breakdown</div>${reasonRows}
+    </div>` : ''}
+    <button onclick="window.badNewGame()" class="w-full bg-blue-600 text-white rounded-xl py-3 font-semibold hover:bg-blue-700">
+      New Game
+    </button>
+    <a href="stats.html" class="text-xs text-blue-600 text-center block hover:underline">View all stats →</a>
+  </div>`;
+}
+
+// ── Wire step interactions ────────────────────────────────
+function wireStep() {
+  if (currentStep === 'setup') {
+    document.getElementById('setupNext').onclick = () => {
+      G.team1 = document.getElementById('gT1').value.trim() || 'Team 1';
+      G.team2 = document.getElementById('gT2').value.trim() || 'Team 2';
+      G.date  = document.getElementById('gDate').value;
+      setStep('squads');
+    };
+  }
+  if (currentStep === 'squads') {
+    document.getElementById('squadsNext')?.addEventListener('click', async () => {
+      // Save match + squads to DB
+      const { data:m } = await sb.from('badminton_matches').insert({
+        date: G.date, team1_name: G.team1, team2_name: G.team2, status: 'setup'
+      }).select('id').single();
+      G.matchId = m.id;
+      const sq = [
+        ...G.squad1.map(p => ({ match_id:G.matchId, team:1, player_id:p.id||null, guest_name:p.id?null:p.name })),
+        ...G.squad2.map(p => ({ match_id:G.matchId, team:2, player_id:p.id||null, guest_name:p.id?null:p.name })),
+      ];
+      await sb.from('badminton_squads').insert(sq);
+      sessionStorage.setItem('activeBadmintonMatchId', G.matchId);
+      setStep('serve');
+    });
+  }
+}
+
+// ── Global handlers ───────────────────────────────────────
+window.badBack = () => {
+  const prev = { squads:'setup', serve:'squads' };
+  if (prev[currentStep]) setStep(prev[currentStep]);
+};
+
+window.badCycleTile = (i) => {
+  const entry = window.__badTileReg?.[i];
+  if (!entry) return;
+  const { key, name, id } = entry;
+  const inT1 = G.squad1.some(p=>(p.id||p.name)===key);
+  const inT2 = G.squad2.some(p=>(p.id||p.name)===key);
+  if (!inT1 && !inT2) {
+    G.squad1.push({ id:id||null, name });
+  } else if (inT1) {
+    G.squad1 = G.squad1.filter(p=>(p.id||p.name)!==key);
+    G.squad2.push({ id:id||null, name });
+  } else {
+    G.squad2 = G.squad2.filter(p=>(p.id||p.name)!==key);
+  }
+  render();
+};
+
+window.badAddGuest = () => {
+  const input = document.getElementById('guestIn');
+  const name  = input?.value?.trim();
+  if (!name) return;
+  const allPlayers = [...(G.registeredPlayers||[])];
+  if ([...G.squad1,...G.squad2,...allPlayers].some(p=>p.name===name)) { input.value=''; return; }
+  G.squad1.push({ id:null, name });
+  input.value='';
+  render();
+};
+
+window.badFirstServe = async (team) => {
+  G.servingTeam = team;
+  G.score1 = 0; G.score2 = 0; G.seq = 0; G.rallies = [];
+  await sb.from('badminton_matches').update({ status:'playing', first_server:team }).eq('id',G.matchId);
+  setStep('playing');
+};
+
+// ── Point scoring ─────────────────────────────────────────
+let pendingRally = null;
+
+window.badPoint = (scoringTeam) => {
+  if (isGameOver()) return;
+  const newScore1 = G.score1 + (scoringTeam===1 ? 1 : 0);
+  const newScore2 = G.score2 + (scoringTeam===2 ? 1 : 0);
+  pendingRally = {
+    seq:         G.seq + 1,
+    servingTeam: G.servingTeam,
+    scoringTeam,
+    score1:      newScore1,
+    score2:      newScore2,
+    lossReason:  null,
+    lossPlayerId: null,
+    lossGuestName: null,
+    isHighlight: false,
+    highlightNote: null,
+  };
+  // Show loss reason modal for the team that LOST
+  showReasonModal(scoringTeam === 1 ? G.team2 : G.team1,
+                  scoringTeam === 1 ? G.squad2 : G.squad1);
+};
+
+function showReasonModal(losingTeam, losingSquad) {
+  const REASONS = [
+    { value:'service_error', label:'Service error' },
+    { value:'net',           label:'Net' },
+    { value:'out',           label:'Out' },
+    { value:'smash_out',     label:'Smash out' },
+    { value:'net_cord',      label:'Net cord' },
+    { value:'unforced_error',label:'Unforced error' },
+    { value:'forced_error',  label:'Forced error' },
+    { value:'let',           label:'Let' },
+    { value:'other',         label:'Other' },
+  ];
+  let selected = null;
+  const grid = document.getElementById('reasonGrid');
+  grid.innerHTML = REASONS.map(r =>
+    `<button data-val="${r.value}"
+      class="reason-btn border rounded-xl py-2 px-1 text-xs font-medium hover:bg-blue-50 hover:border-blue-300 transition-colors">
+      ${r.label}
+    </button>`
+  ).join('');
+  grid.querySelectorAll('.reason-btn').forEach(btn => {
+    btn.onclick = () => {
+      grid.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('bg-blue-100','border-blue-400','text-blue-700'));
+      btn.classList.add('bg-blue-100','border-blue-400','text-blue-700');
+      selected = btn.dataset.val;
+    };
+  });
+
+  // Player dropdown
+  const sel = document.getElementById('reasonPlayer');
+  sel.innerHTML = '<option value="">— any player —</option>' +
+    losingSquad.map(p => `<option value="${p.id||p.name}">${p.name}</option>`).join('');
+
+  document.getElementById('reasonTitle').textContent = `Why did ${losingTeam} lose the point? (optional)`;
+  document.getElementById('reasonModal').classList.remove('hidden');
+
+  const finish = () => {
+    if (pendingRally) {
+      pendingRally.lossReason = selected;
+      const selVal = sel.value;
+      const player = losingSquad.find(p=>(p.id||p.name)===selVal);
+      if (player) {
+        pendingRally.lossPlayerId   = player.id || null;
+        pendingRally.lossGuestName  = player.id ? null : player.name;
+      }
+    }
+    document.getElementById('reasonModal').classList.add('hidden');
+    showHighlightModal();
+  };
+
+  document.getElementById('reasonSkip').onclick    = finish;
+  document.getElementById('reasonConfirm').onclick = finish;
+}
+
+function showHighlightModal() {
+  document.getElementById('highlightNote').value = '';
+  document.getElementById('highlightModal').classList.remove('hidden');
+
+  document.getElementById('highlightSkip').onclick = () => {
+    document.getElementById('highlightModal').classList.add('hidden');
+    commitRally();
+  };
+  document.getElementById('highlightConfirm').onclick = () => {
+    if (pendingRally) {
+      pendingRally.isHighlight    = true;
+      pendingRally.highlightNote  = document.getElementById('highlightNote').value.trim() || null;
+    }
+    document.getElementById('highlightModal').classList.add('hidden');
+    commitRally();
+  };
+}
+
+async function commitRally() {
+  if (!pendingRally) return;
+  const r = pendingRally;
+  pendingRally = null;
+
+  // Update game state
+  G.score1      = r.score1;
+  G.score2      = r.score2;
+  G.servingTeam = r.scoringTeam; // winner serves next (rally point)
+  G.seq++;
+  G.rallies.push({
+    seq:          r.seq,
+    servingTeam:  r.servingTeam,
+    scoringTeam:  r.scoringTeam,
+    score1:       r.score1,
+    score2:       r.score2,
+    lossReason:   r.lossReason,
+    isHighlight:  r.isHighlight,
+    highlightNote:r.highlightNote,
+  });
+
+  // Write to DB
+  await sb.from('badminton_rallies').insert({
+    match_id:       G.matchId,
+    seq:            r.seq,
+    serving_team:   r.servingTeam,
+    scoring_team:   r.scoringTeam,
+    score1_after:   r.score1,
+    score2_after:   r.score2,
+    loss_reason:    r.lossReason || null,
+    loss_player_id: r.lossPlayerId || null,
+    loss_guest_name:r.lossGuestName || null,
+    is_highlight:   r.isHighlight,
+    highlight_note: r.highlightNote || null,
+  });
+
+  // Check if game over
+  if (isGameOver()) {
+    const win = winner();
+    await sb.from('badminton_matches').update({
+      status:      'complete',
+      team1_score: G.score1,
+      team2_score: G.score2,
+      winner_team: win,
+    }).eq('id', G.matchId);
+    sessionStorage.removeItem('activeBadmintonMatchId');
+    setStep('result');
+  } else {
+    render();
+  }
+}
+
+window.badUndo = async () => {
+  if (!G.rallies.length) return;
+  const last = G.rallies.pop();
+  // Delete from DB
+  await sb.from('badminton_rallies')
+    .delete().eq('match_id', G.matchId).eq('seq', last.seq);
+  // Restore score
+  G.score1      = last.score1 - (last.scoringTeam===1 ? 1 : 0);
+  G.score2      = last.score2 - (last.scoringTeam===2 ? 1 : 0);
+  G.seq--;
+  // Restore serving team to the one before this rally
+  const prev = G.rallies[G.rallies.length-1];
+  G.servingTeam = prev ? prev.scoringTeam : G.firstServe;
+  render();
+};
+
+window.badFinish = async () => {
+  if (!confirm('End this match now?')) return;
+  const win = G.score1 > G.score2 ? G.team1 : G.team2;
+  await sb.from('badminton_matches').update({
+    status:'complete', team1_score:G.score1, team2_score:G.score2, winner_team:win
+  }).eq('id',G.matchId);
+  sessionStorage.removeItem('activeBadmintonMatchId');
+  setStep('result');
+};
+
+window.badNewGame = () => {
+  Object.assign(G, {
+    matchId:null, date:null, team1:'', team2:'',
+    squad1:[], squad2:[], score1:0, score2:0,
+    servingTeam:1, seq:0, rallies:[], firstServe:1,
+  });
+  setStep('setup');
+};
+
+// ── Public match list ─────────────────────────────────────
+const MP = { all:[], page:1, pageSize:5 };
+
+function renderMatchList() {
+  const list = document.getElementById('matchList');
+  const info = document.getElementById('mpInfo');
+  const prev = document.getElementById('mpPrev');
+  const next = document.getElementById('mpNext');
+  const pages = Math.max(1, Math.ceil(MP.all.length / MP.pageSize));
+  MP.page = Math.min(Math.max(1,MP.page), pages);
+  const slice = MP.all.slice((MP.page-1)*MP.pageSize, MP.page*MP.pageSize);
+  if (info) info.textContent = `${MP.page}/${pages}`;
+  if (prev) prev.disabled = MP.page<=1;
+  if (next) next.disabled = MP.page>=pages;
+  if (!slice.length) { list.innerHTML='<p class="text-sm text-gray-400">No matches yet.</p>'; return; }
+
+  list.innerHTML = slice.map(m => {
+    const complete = m.status==='complete';
+    return `<div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="font-semibold text-sm">${m.team1_name} vs ${m.team2_name}</div>
+          <div class="text-xs text-gray-400 mt-0.5">${m.date}</div>
+        </div>
+        ${complete
+          ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">🏆 ${m.winner_team} won</span>`
+          : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">In progress</span>`}
+      </div>
+      ${complete ? `<div class="flex justify-around mt-3">
+        <div class="text-center"><div class="text-xs text-gray-400">${m.team1_name}</div><div class="text-2xl font-bold text-blue-600">${m.team1_score}</div></div>
+        <div class="text-xl font-bold text-gray-300 self-center">–</div>
+        <div class="text-center"><div class="text-xs text-gray-400">${m.team2_name}</div><div class="text-2xl font-bold text-emerald-600">${m.team2_score}</div></div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function loadMatches(isAdmin=false) {
+  const { data } = await sb.from('badminton_matches')
+    .select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
+  MP.all  = isAdmin ? (data||[]) : (data||[]).filter(m=>m.status!=='abandoned');
+  MP.page = 1;
+  renderMatchList();
+}
+
+document.getElementById('mpPrev').onclick = () => { MP.page--; renderMatchList(); };
+document.getElementById('mpNext').onclick = () => { MP.page++; renderMatchList(); };
+
+// ── Admin panel injection ─────────────────────────────────
+function renderAdminMount(user) {
+  document.getElementById('adminMount').innerHTML = `
+    <section id="badAdminSection">
+      <div class="bg-white rounded-2xl shadow p-4 mb-4">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="font-semibold text-blue-800">🏸 Badminton Admin</h2>
+          <div class="flex gap-2">
+            <button id="badNewBtn" class="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-full font-medium hover:bg-blue-700">+ New Game</button>
+            <button id="badSignOut" class="text-xs px-3 py-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200">Sign out</button>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400">Signed in as <strong>${user.email}</strong></p>
+      </div>
+      <!-- Progress dots -->
+      <div id="wizardWrap" class="hidden">
+        <div class="flex items-center gap-2 mb-4 px-1">
+          ${STEPS.map((_,i)=>`<div id="bdot${i}" class="step-dot ${i===0?'active':''}"></div>`).join('')}
+          <span id="stepLabel" class="text-xs text-gray-400 ml-2">${LABELS['setup']} (1/${STEPS.length})</span>
+        </div>
+        <div id="wizardStep"></div>
+      </div>
+    </section>`;
+
+  document.getElementById('badNewBtn').onclick = () => {
+    badNewGame();
+    document.getElementById('wizardWrap').classList.remove('hidden');
+    setStep('setup');
+  };
+  document.getElementById('badSignOut').onclick = async () => {
+    await sb.auth.signOut();
+    document.getElementById('adminMount').innerHTML = '';
+    adminPanelOpen = false;
+    document.getElementById('adminToggle').textContent = 'Admin';
+    renderSignInPrompt();
+  };
+
+  // Quick-resume banner
+  const savedId = sessionStorage.getItem('activeBadmintonMatchId');
+  if (savedId) {
+    const banner = document.createElement('div');
+    banner.className = 'bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-center justify-between';
+    banner.innerHTML = `<div><div class="text-xs font-semibold text-amber-800">Badminton game in progress</div>
+      <div class="text-xs text-amber-600 mt-0.5">Resume where you left off?</div></div>
+      <button id="badResumeBtn" class="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium ml-3">Resume →</button>`;
+    const sec = document.getElementById('badAdminSection');
+    sec.insertBefore(banner, sec.firstChild);
+    document.getElementById('badResumeBtn').onclick = () => resumeBadminton(savedId);
+  }
+
+  loadMatches(true);
+}
+
+// ── Resume ────────────────────────────────────────────────
+async function resumeBadminton(matchId) {
+  const { data:m } = await sb.from('badminton_matches').select('*').eq('id',matchId).single();
+  if (!m) { alert('Match not found'); return; }
+
+  const { data:squads } = await sb.from('badminton_squads')
+    .select('team,player_id,guest_name').eq('match_id',matchId);
+  const uuids = (squads||[]).filter(s=>s.player_id).map(s=>s.player_id);
+  const nm = {};
+  if (uuids.length) {
+    const { data:pRows } = await sb.from('players').select('id,name').in('id',uuids);
+    (pRows||[]).forEach(p=>{ nm[p.id]=p.name; });
+  }
+  G.squad1 = (squads||[]).filter(s=>s.team===1).map(s=>s.player_id?{id:s.player_id,name:nm[s.player_id]||'?'}:{id:null,name:s.guest_name});
+  G.squad2 = (squads||[]).filter(s=>s.team===2).map(s=>s.player_id?{id:s.player_id,name:nm[s.player_id]||'?'}:{id:null,name:s.guest_name});
+
+  const { data:rallies } = await sb.from('badminton_rallies')
+    .select('*').eq('match_id',matchId).order('seq');
+  G.rallies = (rallies||[]).map(r=>({
+    seq:r.seq, servingTeam:r.serving_team, scoringTeam:r.scoring_team,
+    score1:r.score1_after, score2:r.score2_after,
+    lossReason:r.loss_reason, isHighlight:r.is_highlight, highlightNote:r.highlight_note
+  }));
+
+  const last = G.rallies[G.rallies.length-1];
+  G.matchId     = matchId;
+  G.date        = m.date;
+  G.team1       = m.team1_name;
+  G.team2       = m.team2_name;
+  G.score1      = last?.score1 ?? 0;
+  G.score2      = last?.score2 ?? 0;
+  G.seq         = last?.seq    ?? 0;
+  G.servingTeam = last?.scoringTeam ?? m.first_server ?? 1;
+  G.firstServe  = m.first_server ?? 1;
+
+  sessionStorage.setItem('activeBadmintonMatchId', matchId);
+  document.getElementById('wizardWrap').classList.remove('hidden');
+  setStep('playing');
+}
+
+// ── Auth toggle ───────────────────────────────────────────
+let adminPanelOpen = false;
+
+function renderSignInPrompt() {
+  document.getElementById('adminMount').innerHTML = `
+    <div class="bg-white rounded-2xl shadow p-5 text-center">
+      <div class="text-3xl mb-2">🔐</div>
+      <div class="font-semibold mb-1">Admin sign-in required</div>
+      <p class="text-xs text-gray-400 mb-4">Use the same magic link as the expense tracker</p>
+      <button id="badSignIn" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700">Send magic link</button>
+    </div>`;
+  document.getElementById('badSignIn').onclick = async () => {
+    const email = prompt('Enter your admin email:');
+    if (!email) return;
+    const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL } });
+    alert(error ? error.message : 'Magic link sent! Check your inbox.');
+  };
+}
+
+document.getElementById('adminToggle').onclick = async () => {
+  adminPanelOpen = !adminPanelOpen;
+  if (!adminPanelOpen) {
+    document.getElementById('adminMount').innerHTML = '';
+    document.getElementById('adminToggle').textContent = 'Admin';
+    return;
+  }
+  document.getElementById('adminToggle').textContent = 'Close';
+  document.getElementById('adminMount').innerHTML = '<p class="text-xs text-gray-400 text-center py-4">Checking auth…</p>';
+  const user = await getUser();
+  if (user) {
+    renderAdminMount(user);
+    if (!G.registeredPlayers) {
+      const { data } = await sb.from('players').select('id,name').eq('is_active',true).order('name');
+      G.registeredPlayers = data || [];
+    }
+    loadMatches(true);
+  } else {
+    renderSignInPrompt();
+  }
+};
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event==='SIGNED_IN' && session && adminPanelOpen) {
+    renderAdminMount(session.user);
+    if (!G.registeredPlayers) {
+      const { data } = await sb.from('players').select('id,name').eq('is_active',true).order('name');
+      G.registeredPlayers = data || [];
+    }
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────
+loadMatches(false);
+</script>
+</body>
+</html>
